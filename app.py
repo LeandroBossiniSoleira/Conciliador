@@ -229,14 +229,14 @@ def main():
         st.markdown("<p style='color: #64748b; font-size: 0.9rem;'>Faça upload das planilhas exportadas diretamente dos respectivos sistemas.</p>", unsafe_allow_html=True)
         
         st.markdown("---")
-        st.markdown("#### 🛒 Cadastros de Produtos")
-        files_magis = st.file_uploader("Upload Planilha Magis 5 (.xlsx) - Produtos", type=['xlsx'], accept_multiple_files=True)
-        files_tiny = st.file_uploader("Upload Planilha Olist Tiny (.xlsx) - Produtos", type=['xlsx'], accept_multiple_files=True)
+        st.markdown("#### 🛒 Cadastros de Produtos (Opcional)")
+        files_magis = st.file_uploader("Upload Planilha Magis 5 - Produtos", type=['xlsx', 'xls'], accept_multiple_files=True)
+        files_tiny = st.file_uploader("Upload Planilha Olist Tiny - Produtos", type=['xlsx', 'xls'], accept_multiple_files=True)
         
         st.markdown("---")
         st.markdown("#### 📦 Cadastros de Kits (Opcional)")
-        files_magis_kits = st.file_uploader("Upload Planilha Magis 5 (.xlsx) - Kits", type=['xlsx'], accept_multiple_files=True)
-        files_tiny_kits = st.file_uploader("Upload Planilha Olist Tiny (.xlsx) - Kits", type=['xlsx'], accept_multiple_files=True)
+        files_magis_kits = st.file_uploader("Upload Planilha Magis 5 - Kits", type=['xlsx', 'xls'], accept_multiple_files=True)
+        files_tiny_kits = st.file_uploader("Upload Planilha Olist Tiny - Kits", type=['xlsx', 'xls'], accept_multiple_files=True)
         
         st.markdown("<br>", unsafe_allow_html=True)
         comecar = st.button("🚀 Processar Comparação", type="primary", use_container_width=True)
@@ -248,12 +248,15 @@ def main():
         st.markdown("✔ Validação Fiscal e Duplicidades")
         st.markdown("✔ Análise Estrutural de Kits")
 
+    # Flags de contexto
+    tem_produtos = bool(files_magis and files_tiny)
+    tem_kits = bool(files_magis_kits or files_tiny_kits)
+
     # Área principal
     if not comecar:
-        if not files_magis and not files_tiny:
-            st.info("👈 Adicione os arquivos no menu lateral, para Produtos e opcionalmente para Kits, e clique em Iniciar.")
+        if not files_magis and not files_tiny and not files_magis_kits and not files_tiny_kits:
+            st.info("👈 Adicione os arquivos no menu lateral (Produtos e/ou Kits) e clique em Processar.")
             
-            # Exibe uma ilustração (placeholder)
             col1, col2, col3 = st.columns([1, 2, 1])
             with col2:
                 st.markdown("""
@@ -264,45 +267,54 @@ def main():
                 """, unsafe_allow_html=True)
         return
 
-    if not files_magis or not files_tiny:
-        st.error("⚠️ Você precisa enviar **ambos** os arquivos de Produtos (Magis e Tiny) para realizar a comparação principal.")
+    if not tem_produtos and not tem_kits:
+        st.error("⚠️ Você precisa enviar ao menos um par de arquivos (Produtos **ou** Kits) do Magis e do Tiny.")
+        return
+    
+    if (files_magis and not files_tiny) or (files_tiny and not files_magis):
+        st.error("⚠️ Para comparar **Produtos**, envie as planilhas de **ambos** os sistemas (Magis e Tiny).")
+        return
+    
+    if (files_magis_kits and not files_tiny_kits) or (files_tiny_kits and not files_magis_kits):
+        st.error("⚠️ Para comparar **Kits**, envie as planilhas de **ambos** os sistemas (Magis e Tiny).")
         return
 
-    # Processamento e Análise
-    with st.spinner('Lendo planilhas de Produtos e normalizando dados... Isto pode levar um tempo se houver vários arquivos.'):
-        try:
-            # Produtos
-            magis_raw = carregar_magis(files_magis)
-            tiny_raw = carregar_tiny(files_tiny)
-            
-            if magis_raw.empty or tiny_raw.empty:
-                st.error("⚠️ Uma das planilhas de produto está vazia.")
-                return
-                
-            if "sku" not in magis_raw.columns:
-                st.error("⚠️ **Erro Crítico:** A coluna `sku` não foi encontrada no Magis após o mapeamento.")
-                return
-                
-            if "sku" not in tiny_raw.columns:
-                st.error("⚠️ **Erro Crítico:** A coluna `sku` não foi encontrada no Tiny após o mapeamento.")
-                return
-            
-            magis_norm = normalizar_dataframe(magis_raw, sistema="magis")
-            tiny_norm = normalizar_dataframe(tiny_raw, sistema="tiny")
-            
-        except Exception as e:
-            st.error(f"Erro ao carregar e normalizar Produtos: {str(e)}")
-            return
+    resultados: dict[str, pd.DataFrame] = {}
 
-    with st.spinner('Cruzando bases de Produtos e identificando divergências...'):
-        try:
-            resultados = executar_comparacao(magis_norm, tiny_norm)
-        except Exception as e:
-            st.error(f"Erro durante a comparação de Produtos: {str(e)}")
-            return
+    # Processamento de Produtos
+    if tem_produtos:
+        with st.spinner('Lendo planilhas de Produtos e normalizando dados...'):
+            try:
+                magis_raw = carregar_magis(files_magis)
+                tiny_raw = carregar_tiny(files_tiny)
+                
+                if magis_raw.empty or tiny_raw.empty:
+                    st.error("⚠️ Uma das planilhas de produto está vazia.")
+                    return
+                    
+                if "sku" not in magis_raw.columns:
+                    st.error("⚠️ **Erro Crítico:** A coluna `sku` não foi encontrada no Magis após o mapeamento.")
+                    return
+                    
+                if "sku" not in tiny_raw.columns:
+                    st.error("⚠️ **Erro Crítico:** A coluna `sku` não foi encontrada no Tiny após o mapeamento.")
+                    return
+                
+                magis_norm = normalizar_dataframe(magis_raw, sistema="magis")
+                tiny_norm = normalizar_dataframe(tiny_raw, sistema="tiny")
+                
+            except Exception as e:
+                st.error(f"Erro ao carregar e normalizar Produtos: {str(e)}")
+                return
 
-    # Processando Kits se houver arquivos
-    tem_kits = bool(files_magis_kits or files_tiny_kits)
+        with st.spinner('Cruzando bases de Produtos e identificando divergências...'):
+            try:
+                resultados = executar_comparacao(magis_norm, tiny_norm)
+            except Exception as e:
+                st.error(f"Erro durante a comparação de Produtos: {str(e)}")
+                return
+
+    # Processamento de Kits
     if tem_kits:
         with st.spinner('Processando e comparando planilhas de Kits...'):
             try:
@@ -332,74 +344,77 @@ def main():
     # Sucesso
     st.toast("Análise finalizada com sucesso!", icon="✅")
     
-    # Exibições de UI
-    if tem_kits:
+    # Exibições de UI — montar abas conforme o que foi enviado
+    if tem_produtos and tem_kits:
         aba_produtos, aba_kits = st.tabs(["🛒 Análise de Produtos", "📦 Análise de Kits"])
-    else:
+    elif tem_produtos:
         aba_produtos = st.container()
+    else:
+        aba_kits = st.container()
 
     # -- ABA DE PRODUTOS --
-    with aba_produtos:
-        exibir_metricas_produtos(resultados)
-        
-        st.markdown("#### 📑 Detalhamento dos Produtos")
-        tabs = st.tabs([
-            "Somente Magis", 
-            "Somente Tiny", 
-            "Sugestões Match Título",
-            "Divergências Fiscais",
-            "Duplicidades Internas"
-        ])
-        
-        with tabs[0]:
-            df = resultados.get("somente_magis", pd.DataFrame())
-            st.markdown(f"**{len(df)} produtos cadastrados apenas no Magis 5.**")
-            if not df.empty:
-                cols = ["sku", 'titulo', 'ean', 'preco_custo', 'estoque']
-                valid_cols = []
-                for c in cols:
-                    if c in df.columns: valid_cols.append(c)
-                    elif f"{c}_magis" in df.columns: valid_cols.append(f"{c}_magis")
-                st.dataframe(df[valid_cols], use_container_width=True)
-                
-        with tabs[1]:
-            df = resultados.get("somente_tiny", pd.DataFrame())
-            st.markdown(f"**{len(df)} produtos cadastrados apenas no Olist Tiny.**")
-            if not df.empty:
-                cols = ["sku", 'titulo', 'ean', 'preco_custo', 'estoque']
-                valid_cols = []
-                for c in cols:
-                    if c in df.columns: valid_cols.append(c)
-                    elif f"{c}_tiny" in df.columns: valid_cols.append(f"{c}_tiny")
-                st.dataframe(df[valid_cols], use_container_width=True)
-                
-        with tabs[2]:
-            df = resultados.get("sugestao_match_titulo", pd.DataFrame())
-            if not df.empty:
-                def color_score(val):
-                    color = '#059669' if val >= 90 else '#d97706'
-                    return f'color: {color}; font-weight: 600;'
-                st.dataframe(df.style.map(color_score, subset=['score']), use_container_width=True)
-            else:
-                st.info("Nenhuma sugestão forte de match por similaridade.")
+    if tem_produtos:
+        with aba_produtos:
+            exibir_metricas_produtos(resultados)
+            
+            st.markdown("#### 📑 Detalhamento dos Produtos")
+            tabs = st.tabs([
+                "Somente Magis", 
+                "Somente Tiny", 
+                "Sugestões Match Título",
+                "Divergências Fiscais",
+                "Duplicidades Internas"
+            ])
+            
+            with tabs[0]:
+                df = resultados.get("somente_magis", pd.DataFrame())
+                st.markdown(f"**{len(df)} produtos cadastrados apenas no Magis 5.**")
+                if not df.empty:
+                    cols = ["sku", 'titulo', 'ean', 'preco_custo', 'estoque']
+                    valid_cols = []
+                    for c in cols:
+                        if c in df.columns: valid_cols.append(c)
+                        elif f"{c}_magis" in df.columns: valid_cols.append(f"{c}_magis")
+                    st.dataframe(df[valid_cols], use_container_width=True)
+                    
+            with tabs[1]:
+                df = resultados.get("somente_tiny", pd.DataFrame())
+                st.markdown(f"**{len(df)} produtos cadastrados apenas no Olist Tiny.**")
+                if not df.empty:
+                    cols = ["sku", 'titulo', 'ean', 'preco_custo', 'estoque']
+                    valid_cols = []
+                    for c in cols:
+                        if c in df.columns: valid_cols.append(c)
+                        elif f"{c}_tiny" in df.columns: valid_cols.append(f"{c}_tiny")
+                    st.dataframe(df[valid_cols], use_container_width=True)
+                    
+            with tabs[2]:
+                df = resultados.get("sugestao_match_titulo", pd.DataFrame())
+                if not df.empty:
+                    def color_score(val):
+                        color = '#059669' if val >= 90 else '#d97706'
+                        return f'color: {color}; font-weight: 600;'
+                    st.dataframe(df.style.map(color_score, subset=['score']), use_container_width=True)
+                else:
+                    st.info("Nenhuma sugestão forte de match por similaridade.")
 
-        with tabs[3]:
-            df = resultados.get("divergencias_fiscais", pd.DataFrame())
-            if not df.empty:
-                st.dataframe(df, use_container_width=True)
-            else:
-                st.success("Nenhuma divergência nas propriedades fiscais encontrada.")
-                
-        with tabs[4]:
-            colA, colB = st.columns(2)
-            with colA:
-                st.markdown("**Duplicados no Magis 5**")
-                st.write("Por SKU:", len(resultados.get("duplicidades_sku_magis", [])))
-                st.write("Por EAN:", len(resultados.get("duplicidades_ean_magis", [])))
-            with colB:
-                st.markdown("**Duplicados no Olist Tiny**")
-                st.write("Por SKU:", len(resultados.get("duplicidades_sku_tiny", [])))
-                st.write("Por EAN:", len(resultados.get("duplicidades_ean_tiny", [])))
+            with tabs[3]:
+                df = resultados.get("divergencias_fiscais", pd.DataFrame())
+                if not df.empty:
+                    st.dataframe(df, use_container_width=True)
+                else:
+                    st.success("Nenhuma divergência nas propriedades fiscais encontrada.")
+                    
+            with tabs[4]:
+                colA, colB = st.columns(2)
+                with colA:
+                    st.markdown("**Duplicados no Magis 5**")
+                    st.write("Por SKU:", len(resultados.get("duplicidades_sku_magis", [])))
+                    st.write("Por EAN:", len(resultados.get("duplicidades_ean_magis", [])))
+                with colB:
+                    st.markdown("**Duplicados no Olist Tiny**")
+                    st.write("Por SKU:", len(resultados.get("duplicidades_sku_tiny", [])))
+                    st.write("Por EAN:", len(resultados.get("duplicidades_ean_tiny", [])))
 
     # -- ABA DE KITS --
     if tem_kits:
