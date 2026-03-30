@@ -1,0 +1,46 @@
+# =============================================================
+# Regras de normalização aplicadas após o carregamento
+# =============================================================
+
+# Campos de texto livre — limpar acentos, upper, trim
+campos_texto:
+  - sku
+  - titulo
+  - marca
+
+# Campos numéricos/códigos — remover pontos, traços, etc.
+campos_codigo:
+  - ean
+  - ean_tributavel
+  - ncm
+  - cest
+
+# Campos de status — mapear valores equivalentes entre sistemas
+mapa_status:
+  magis:
+    "active": "ATIVO"
+    "inactive": "INATIVO"
+    "0": "INATIVO"
+    "1": "ATIVO"
+  tiny:
+    "Ativo": "ATIVO"
+    "Inativo": "INATIVO"
+    "Excluído": "EXCLUIDO"
+    "A": "ATIVO"
+    "I": "INATIVO"
+    "E": "EXCLUIDO"
+
+# Limiar de similaridade de título (rapidfuzz token_sort_ratio)
+similaridade:
+  match_provavel: 90     # >= 90 = provável mesmo produto
+  revisar: 80            # 80–89 = revisar manualmente
+  ignorar: 80            # < 80  = ignorar
+
+# Campos obrigatórios para validação fiscal
+validacao_fiscal:
+  obrigatorios:
+    - ncm
+    - origem
+  opcionais:
+    - cest
+    - cod_anp

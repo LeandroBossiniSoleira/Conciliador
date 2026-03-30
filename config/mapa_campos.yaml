@@ -1,0 +1,127 @@
+# =============================================================
+# Mapeamento de colunas: Nome original → Nome padronizado
+# =============================================================
+
+magis:
+  "SKU": "sku"
+  "Título": "titulo"
+  "Título (S)": "titulo"
+  "Marca": "marca"
+  "Ean": "ean"
+  "Ean - nota fiscal": "ean_tributavel"
+  "Ncm - nota fiscal": "ncm"
+  "Cest - nota fiscal": "cest"
+  "Origem - nota fiscal": "origem"
+  "Localização": "localizacao"
+  "Preço de custo": "preco_custo"
+  "Status": "status"
+  "Estoque": "estoque"
+  "Condição do produto (new/used)": "condicao"
+  "Modelo": "modelo"
+  "Garantia própria (Em dias)": "garantia_propria"
+  "Garantia fabricante (Em dias)": "garantia_fabricante"
+  "Altura (cm)": "altura_cm"
+  "Largura (cm)": "largura_cm"
+  "Comprimento (cm)": "comprimento_cm"
+  "Peso (kg)": "peso_kg"
+  "Quantidade itens mesma embalagem": "qtd_embalagem"
+  "Estoque infinito": "estoque_infinito"
+  "Crossdocking": "crossdocking"
+  "Custo operacional (R$)": "custo_operacional"
+  "Porcentagem lucro líquido (%)": "pct_lucro"
+  "Código Fornecedor": "cod_fornecedor"
+  "ERP Principal": "erp_principal"
+  "Código ANP": "cod_anp"
+  "Múltiplo nota fiscal (Apenas via API)": "multiplo_nf"
+
+tiny:
+  "Código (SKU)": "sku"
+  "Descrição": "titulo"
+  "Marca": "marca"
+  "GTIN/EAN": "ean"
+  "GTIN/EAN tributável": "ean_tributavel"
+  "Classificação fiscal": "ncm"
+  "CEST": "cest"
+  "Origem": "origem"
+  "Localização": "localizacao"
+  "Preço de custo": "preco_custo"
+  "Situação": "status"
+  "Estoque": "estoque"
+  "Unidade": "unidade"
+  "Preço": "preco"
+  "Valor IPI fixo": "ipi_fixo"
+  "Observações": "observacoes"
+  "Cód do Fornecedor": "cod_fornecedor"
+  "Fornecedor": "fornecedor"
+  "Estoque máximo": "estoque_max"
+  "Estoque mínimo": "estoque_min"
+  "Peso líquido (Kg)": "peso_liquido"
+  "Peso bruto (Kg)": "peso_bruto"
+  "Descrição complementar": "descricao_complementar"
+  "Código de Enquadramento IPI": "enquadramento_ipi"
+  "Formato embalagem": "formato_embalagem"
+  "Largura embalagem": "largura_embalagem"
+  "Altura embalagem": "altura_embalagem"
+  "Comprimento embalagem": "comprimento_embalagem"
+  "Diâmetro embalagem": "diametro_embalagem"
+  "Tipo do produto": "tipo_produto"
+  "Categoria": "categoria"
+  "Código do pai": "codigo_pai"
+  "Variações": "variacoes"
+  "Garantia": "garantia"
+  "Sob encomenda": "sob_encomenda"
+  "Preço promocional": "preco_promocional"
+  "Título SEO": "titulo_seo"
+  "Descrição SEO": "descricao_seo"
+  "Palavras chave SEO": "palavras_chave_seo"
+  "Slug": "slug"
+  "Dias para preparação": "dias_preparacao"
+  "Controlar lotes": "controlar_lotes"
+  "Unidade por caixa": "unidade_por_caixa"
+  "Markup": "markup"
+  "EX TIPI": "ex_tipi"
+
+# Colunas padronizadas usadas para comparação
+colunas_comparacao:
+  - sku
+  - titulo
+  - marca
+  - ean
+  - ean_tributavel
+  - ncm
+  - cest
+  - origem
+  - localizacao
+  - preco_custo
+  - status
+  - estoque
+
+# =============================================================
+# Mapeamento de colunas KITS
+# =============================================================
+
+magis_kits:
+  "SKU KIT": "sku_kit"
+  "Título produto": "titulo_kit"
+  "SKU componente": "sku_componente"
+  "Título componente": "titulo_componente"
+  "Quantidade KIT": "qtd_componente"
+  "Estoque atual": "estoque"
+  "Preço custo unitário": "preco_custo_componente"
+  "Preço custo KIT": "preco_custo_kit"
+  "% kit produto": "percentual_componente"
+
+tiny_kits:
+  "ID kit/fabricado": "id_kit"
+  "SKU kit/fabricado": "sku_kit"
+  "Descrição kit/fabricado": "titulo_kit"
+  "ID componente": "id_componente"
+  "SKU componente": "sku_componente"
+  "Descrição componente": "titulo_componente"
+  "Quantidade componente": "qtd_componente"
+
+colunas_comparacao_kits:
+  - sku_kit
+  - sku_componente
+  - qtd_componente
+
