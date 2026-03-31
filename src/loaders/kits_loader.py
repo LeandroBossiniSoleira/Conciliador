@@ -6,6 +6,7 @@ Carrega planilhas de Kits do Magis e do Tiny, com suporte a múltiplos arquivos,
 import pandas as pd
 import yaml
 from pathlib import Path
+from src.loaders.utils import ler_arquivo_robusto
 
 CONFIG_DIR = Path(__file__).resolve().parents[2] / "config"
 
@@ -22,7 +23,7 @@ def carregar_kits_magis(arquivos) -> pd.DataFrame:
         
     dfs = []
     for f in arquivos:
-        df_temp = pd.read_excel(f, dtype=str)
+        df_temp = ler_arquivo_robusto(f)
         dfs.append(df_temp)
         
     if not dfs:
@@ -49,7 +50,7 @@ def carregar_kits_tiny(arquivos) -> pd.DataFrame:
         
     dfs = []
     for f in arquivos:
-        df_temp = pd.read_excel(f, dtype=str)
+        df_temp = ler_arquivo_robusto(f)
         dfs.append(df_temp)
         
     if not dfs:

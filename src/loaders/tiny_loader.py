@@ -6,6 +6,7 @@ Carrega a planilha exportada do Olist Tiny e mapeia as colunas para o schema pad
 import pandas as pd
 import yaml
 from pathlib import Path
+from src.loaders.utils import ler_arquivo_robusto
 
 
 CONFIG_DIR = Path(__file__).resolve().parents[2] / "config"
@@ -39,7 +40,7 @@ def carregar_tiny(caminho_ou_arquivo) -> pd.DataFrame:
 
     dfs = []
     for f in caminho_ou_arquivo:
-        df_temp = pd.read_excel(f, dtype=str)
+        df_temp = ler_arquivo_robusto(f)
         dfs.append(df_temp)
         
     if not dfs:
