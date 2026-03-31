@@ -12,10 +12,17 @@ def ler_arquivo_robusto(f) -> pd.DataFrame:
     erro_excel = None
 
     # 1. Excel (XLSX, XLS real)
+    # Tenta usar o calamine primeiro (muito mais robusto para arquivos XLS malformados)
     try:
-        return pd.read_excel(io.BytesIO(content), dtype=str)
+        return pd.read_excel(io.BytesIO(content), dtype=str, engine='calamine')
     except Exception as e:
-        erro_excel = str(e)
+        erro_excel = f"Calamine: {str(e)}"
+        
+        # Fallback para o default se calamine não suportar
+        try:
+            return pd.read_excel(io.BytesIO(content), dtype=str)
+        except Exception as e2:
+            erro_excel += f" | Nativo: {str(e2)}"
 
     # 2. HTML (Muitos sistemas exportam HTML puro com extensão .xls)
     try:
