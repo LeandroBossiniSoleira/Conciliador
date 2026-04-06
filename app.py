@@ -329,13 +329,15 @@ def main():
                 resultados["kits_somente_tiny"] = res_kits["somente_tiny"]
                 resultados["kits_divergentes"] = res_kits["divergentes"]
                 
-                df_import_tiny_kits, kits_rejeitados = gerar_planilha_importacao_tiny(
+                df_import_tiny_kits, kits_rejeitados, df_correcao_tipos, alertas_tipo = gerar_planilha_importacao_tiny(
                     magis_kits_raw, 
                     res_kits["somente_magis"], 
                     tiny_norm
                 )
                 resultados["df_import_tiny_kits"] = df_import_tiny_kits
                 resultados["kits_rejeitados_importacao"] = kits_rejeitados
+                resultados["df_correcao_tipos"] = df_correcao_tipos
+                resultados["alertas_tipo"] = alertas_tipo
                 
             except Exception as e:
                 st.error(f"Erro ao avaliar Kits: {str(e)}")
@@ -443,6 +445,51 @@ def main():
                 if not df.empty: 
                     st.dataframe(df, use_container_width=True)
                 
+                # ── Alerta de Tipo de Produto incorreto ──
+                alertas_tipo = resultados.get("alertas_tipo", [])
+                df_correcao = resultados.get("df_correcao_tipos", pd.DataFrame())
+                
+                if alertas_tipo:
+                    st.markdown("---")
+                    st.error(
+                        f"🚨 **{len(alertas_tipo)} produto(s) com Tipo incorreto no Tiny!** "
+                        f"Esses produtos precisam ser do tipo **K** (Kit) ou **V** (Variação/Pai), "
+                        f"mas estão cadastrados com tipo errado. "
+                        f"Importe a planilha de correção abaixo **antes** de importar os Kits."
+                    )
+                    
+                    # Tabela resumo dos alertas
+                    df_alertas_display = pd.DataFrame(alertas_tipo)
+                    df_alertas_display = df_alertas_display.rename(columns={
+                        'sku': 'SKU',
+                        'titulo': 'Descrição',
+                        'tipo_atual': 'Tipo Atual',
+                        'tipo_esperado': 'Tipo Correto',
+                        'eh_pai': 'É Produto Pai?'
+                    })
+                    st.dataframe(df_alertas_display, use_container_width=True)
+                    
+                    # Botão de download da planilha de correção
+                    if not df_correcao.empty:
+                        import io
+                        output_correcao = io.BytesIO()
+                        with pd.ExcelWriter(output_correcao, engine='openpyxl') as writer:
+                            df_correcao.to_excel(writer, index=False, sheet_name='Correção Tipos')
+                        st.download_button(
+                            label="🔧 Baixar Planilha de Correção de Tipos (Tiny)",
+                            data=output_correcao.getvalue(),
+                            file_name="Correcao_Tipos_Produto_Tiny.xlsx",
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                            use_container_width=True,
+                            type="primary"
+                        )
+                        st.caption(
+                            "⬆️ Importe esta planilha em **Tiny → Cadastros → Produtos → Mais Ações → Importar produtos de uma planilha** "
+                            "para corrigir o tipo dos produtos. Após a importação, processe os Kits novamente."
+                        )
+                    st.markdown("---")
+                
+                # ── Planilha de importação de Kits ──
                 df_import_tiny = resultados.get("df_import_tiny_kits", pd.DataFrame())
                 if not df_import_tiny.empty:
                     import io
