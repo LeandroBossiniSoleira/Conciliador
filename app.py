@@ -25,6 +25,7 @@ from src.normalizers.normalizador import normalizar_dataframe
 from src.comparators.comparador_produtos import executar_comparacao
 from src.comparators.comparador_kits import comparar_kits
 from src.reports.gerar_relatorios import gerar_excel
+from src.reports.exportador_tiny import gerar_planilha_importacao_tiny
 
 
 # Estilização CSS Moderna (Premium, Glassmorphism, Animations)
@@ -280,6 +281,7 @@ def main():
         return
 
     resultados: dict[str, pd.DataFrame] = {}
+    tiny_norm = None
 
     # Processamento de Produtos
     if tem_produtos:
@@ -326,6 +328,14 @@ def main():
                 resultados["kits_somente_magis"] = res_kits["somente_magis"]
                 resultados["kits_somente_tiny"] = res_kits["somente_tiny"]
                 resultados["kits_divergentes"] = res_kits["divergentes"]
+                
+                df_import_tiny_kits, kits_rejeitados = gerar_planilha_importacao_tiny(
+                    magis_kits_raw, 
+                    res_kits["somente_magis"], 
+                    tiny_norm
+                )
+                resultados["df_import_tiny_kits"] = df_import_tiny_kits
+                resultados["kits_rejeitados_importacao"] = kits_rejeitados
                 
             except Exception as e:
                 st.error(f"Erro ao avaliar Kits: {str(e)}")
@@ -430,7 +440,29 @@ def main():
             with tabs_k[0]:
                 df = resultados.get("kits_somente_magis", pd.DataFrame())
                 st.markdown(f"**{len(df)} Kits exclusivos do Magis.**")
-                if not df.empty: st.dataframe(df, use_container_width=True)
+                if not df.empty: 
+                    st.dataframe(df, use_container_width=True)
+                
+                df_import_tiny = resultados.get("df_import_tiny_kits", pd.DataFrame())
+                if not df_import_tiny.empty:
+                    import io
+                    output_import = io.BytesIO()
+                    with pd.ExcelWriter(output_import, engine='openpyxl') as writer:
+                        df_import_tiny.to_excel(writer, index=False)
+                    st.download_button(
+                        label="📥 Baixar Planilha de Importação Tiny (Kits)",
+                        data=output_import.getvalue(),
+                        file_name="Importacao_Kits_Tiny.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        use_container_width=True,
+                        type="secondary"
+                    )
+                
+                rejeitados = resultados.get("kits_rejeitados_importacao", [])
+                if rejeitados:
+                    st.warning(f"⚠️ {len(rejeitados)} kits não podem ser exportados devido a regras do Olist.")
+                    with st.expander("Ver motivos de rejeição"):
+                        st.dataframe(pd.DataFrame(rejeitados), use_container_width=True)
             
             with tabs_k[1]:
                 df = resultados.get("kits_somente_tiny", pd.DataFrame())
