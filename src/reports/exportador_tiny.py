@@ -10,14 +10,27 @@ import pandas as pd
 # Colunas obrigatórias para planilha de correção de tipo de produto
 # (Apenas colunas essenciais para evitar efeitos colaterais na importação)
 # ────────────────────────────────────────────
-COLUNAS_CORRECAO_TIPO = [
-    'ID',
-    'Código (SKU)',
-    'Descrição',
-    'Situação',
-    'Tipo do produto',
-    'Código do pai',
-]
+import yaml
+from pathlib import Path
+
+CONFIG_DIR = Path(__file__).resolve().parents[2] / "config"
+
+def _carregar_mapa_tiny_reverso() -> dict:
+    """Lê o mapeamento do Tiny do YAML e inverte (Padronizado -> Original)."""
+    try:
+        with open(CONFIG_DIR / "mapa_campos.yaml", encoding="utf-8") as f:
+            mapa = yaml.safe_load(f)
+        mapa_tiny = mapa.get("tiny", {})
+        return {v: k for k, v in mapa_tiny.items()}
+    except Exception:
+        # Fallback de segurança mínimo caso falhe a leitura
+        return {
+            'sku': 'Código (SKU)',
+            'titulo': 'Descrição',
+            'status': 'Situação',
+            'tipo_produto': 'Tipo do produto',
+            'codigo_pai': 'Código do pai'
+        }
 
 
 def _buscar_produto_tiny(sku: str, df_tiny: pd.DataFrame) -> pd.Series | None:
@@ -40,38 +53,59 @@ def _tipo_correto(produto_tiny: pd.Series) -> str:
     return 'K'
 
 
-def _montar_linha_correcao(produto_tiny: pd.Series, tipo_esperado: str) -> dict:
-    """Monta uma linha para a planilha de correção de tipo de produto."""
-    # O Tiny exporta a coluna como 'ID' (uppercase) e ela não é mapeada pelo loader
-    id_value = produto_tiny.get('ID', produto_tiny.get('id', ''))
+def _montar_linha_correcao(produto_tiny: pd.Series, tipo_esperado: str, mapa_tiny_reverso: dict) -> dict:
+    """Monta uma linha para a planilha de correção mantendo TODAS as colunas originais do Tiny,
+    mas limpando o conteúdo das que não são essenciais/obrigatórias para evitar sobrescrita."""
+    linha = produto_tiny.copy()
     
-    # Normaliza o status para o formato aceito pelo Tiny na importação
-    status_raw = produto_tiny.get('status', '')
+    # Normaliza o status para o formato aceito pelo Tiny
+    status_raw = linha.get('status', '')
     status_map = {'ATIVO': 'Ativo', 'INATIVO': 'Inativo'}
     situacao = status_map.get(str(status_raw).strip().upper(), str(status_raw) if pd.notna(status_raw) else 'Ativo')
 
-    # Limpa o codigo_pai (NaN → vazio)
-    codigo_pai = produto_tiny.get('codigo_pai', '')
+    # Limpa o codigo_pai
+    codigo_pai = linha.get('codigo_pai', '')
     if pd.isna(codigo_pai):
         codigo_pai = ''
+        
+    linha['status'] = situacao
+    linha['tipo_produto'] = tipo_esperado
+    linha['codigo_pai'] = codigo_pai
     
-    return {
-        'ID': id_value if pd.notna(id_value) else '',
-        'Código (SKU)': produto_tiny.get('sku', ''),
-        'Descrição': produto_tiny.get('titulo', ''),
-        'Situação': situacao,
-        'Tipo do produto': tipo_esperado,
-        'Código do pai': codigo_pai,
+    # Reverte os nomes das colunas padronizadas para as originais
+    linha_revertida = linha.rename(mapa_tiny_reverso)
+    
+    linha_dict = linha_revertida.to_dict()
+    
+    # Lista de colunas originais obrigatórias / essenciais para a atualização não destrutiva
+    COLUNAS_MANTIDAS_LOWER = {
+        'id',
+        'código (sku)',
+        'descrição',
+        'situação',
+        'tipo do produto',
+        'código do pai',
+        'sob encomenda'
     }
+    
+    # Limpar qualquer coluna que não esteja na lista de mantidas (preservando o layout)
+    for col in linha_dict:
+        if str(col).strip().lower() not in COLUNAS_MANTIDAS_LOWER:
+            linha_dict[col] = ''
+            
+    return linha_dict
 
 
 def verificar_tipos_produto(
     skus_para_verificar: set[str],
     df_tiny_produtos_norm: pd.DataFrame | None,
+    tipo_esperado: str = 'K',
 ) -> tuple[list[dict], list[dict]]:
     """
-    Verifica se os SKUs envolvidos na importação de Kits possuem o
-    'Tipo do produto' correto no cadastro do Tiny.
+    Verifica se os SKUs de Kits possuem o 'Tipo do produto' correto no Tiny.
+    
+    Apenas os SKUs dos Kits (coluna SKU KIT) devem ser verificados.
+    Componentes são produtos simples e não precisam ser do tipo K.
 
     Retorna
     -------
@@ -85,6 +119,8 @@ def verificar_tipos_produto(
 
     if df_tiny_produtos_norm is None or df_tiny_produtos_norm.empty:
         return alertas, correcoes
+        
+    mapa_tiny_reverso = _carregar_mapa_tiny_reverso()
 
     for sku in skus_para_verificar:
         produto = _buscar_produto_tiny(sku, df_tiny_produtos_norm)
@@ -92,7 +128,6 @@ def verificar_tipos_produto(
             continue  # Produto não existe no Tiny — validado em outra etapa
 
         tipo_atual = str(produto.get('tipo_produto', '')).strip().upper()
-        tipo_esperado = _tipo_correto(produto)
 
         if tipo_atual != tipo_esperado:
             alertas.append({
@@ -100,9 +135,8 @@ def verificar_tipos_produto(
                 'titulo': produto.get('titulo', ''),
                 'tipo_atual': tipo_atual if tipo_atual else '(vazio)',
                 'tipo_esperado': tipo_esperado,
-                'eh_pai': tipo_esperado == 'V',
             })
-            correcoes.append(_montar_linha_correcao(produto, tipo_esperado))
+            correcoes.append(_montar_linha_correcao(produto, tipo_esperado, mapa_tiny_reverso))
 
     return alertas, correcoes
 
@@ -140,21 +174,18 @@ def gerar_planilha_importacao_tiny(
         tiny_skus = set(df_tiny_produtos_norm['sku'].astype(str).unique())
     
     # ────────────────────────────────────────────
-    # NOVA VALIDAÇÃO: Coletar todos os SKUs envolvidos (kit + componentes)
-    # e verificar se o Tipo de Produto está correto no Tiny
+    # VALIDAÇÃO DE TIPO: Verificar apenas os SKUs de KIT (coluna A)
+    # Componentes (coluna C) são produtos simples e NÃO devem ser alterados.
     # ────────────────────────────────────────────
     df_filtrado = df_magis_kits_raw[df_magis_kits_raw['sku_kit'].isin(skus_somente_magis)]
     
-    skus_envolvidos: set[str] = set()
-    for sku_kit, gru in df_filtrado.groupby('sku_kit'):
-        skus_envolvidos.add(str(sku_kit))
-        for comp_sku in gru['sku_componente'].unique():
-            skus_envolvidos.add(str(comp_sku))
+    # Coletar apenas os SKUs de KIT (não os componentes)
+    skus_kits_unicos: set[str] = set(df_filtrado['sku_kit'].astype(str).unique())
     
-    alertas_tipo, correcoes = verificar_tipos_produto(skus_envolvidos, df_tiny_produtos_norm)
+    alertas_tipo, correcoes = verificar_tipos_produto(skus_kits_unicos, df_tiny_produtos_norm, tipo_esperado='K')
     
-    # Montar o DataFrame de correção
-    df_correcao_tipos = pd.DataFrame(correcoes, columns=COLUNAS_CORRECAO_TIPO) if correcoes else pd.DataFrame()
+    # Montar o DataFrame de correção (agora com todas as colunas originais do Tiny)
+    df_correcao_tipos = pd.DataFrame(correcoes) if correcoes else pd.DataFrame()
     
     # SKUs com tipo errado (que precisam correção antes de importar o kit)
     skus_tipo_errado = {a['sku'] for a in alertas_tipo}

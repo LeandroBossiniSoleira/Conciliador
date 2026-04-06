@@ -452,9 +452,9 @@ def main():
                 if alertas_tipo:
                     st.markdown("---")
                     st.error(
-                        f"🚨 **{len(alertas_tipo)} produto(s) com Tipo incorreto no Tiny!** "
-                        f"Esses produtos precisam ser do tipo **K** (Kit) ou **V** (Variação/Pai), "
-                        f"mas estão cadastrados com tipo errado. "
+                        f"🚨 **{len(alertas_tipo)} produto(s) Kit com Tipo incorreto no Tiny!** "
+                        f"Esses SKUs de Kit precisam ser do tipo **K** (Kit), "
+                        f"mas estão cadastrados com outro tipo. "
                         f"Importe a planilha de correção abaixo **antes** de importar os Kits."
                     )
                     
@@ -465,7 +465,6 @@ def main():
                         'titulo': 'Descrição',
                         'tipo_atual': 'Tipo Atual',
                         'tipo_esperado': 'Tipo Correto',
-                        'eh_pai': 'É Produto Pai?'
                     })
                     st.dataframe(df_alertas_display, use_container_width=True)
                     
