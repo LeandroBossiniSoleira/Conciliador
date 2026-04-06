@@ -239,6 +239,14 @@ def main():
         files_magis_kits = st.file_uploader("Upload Planilha Magis 5 - Kits", type=['xlsx', 'xls'], accept_multiple_files=True)
         files_tiny_kits = st.file_uploader("Upload Planilha Olist Tiny - Kits", type=['xlsx', 'xls'], accept_multiple_files=True)
         
+        st.markdown("---")
+        st.markdown("### ⚙️ Preferências de Download")
+        formato_download = st.selectbox(
+            "Formato de Exportação (Tiny)",
+            options=["XLSX", "CSV", "XLS"],
+            index=0
+        )
+        
         st.markdown("<br>", unsafe_allow_html=True)
         comecar = st.button("🚀 Processar Comparação", type="primary", use_container_width=True)
         
@@ -442,6 +450,30 @@ def main():
             with tabs_k[0]:
                 df = resultados.get("kits_somente_magis", pd.DataFrame())
                 st.markdown(f"**{len(df)} Kits exclusivos do Magis.**")
+                
+                # Helper function para conversão de dataframes ao formato escolhido
+                def converter_dataframe(dataframe: pd.DataFrame, formato: str, sheet_name: str):
+                    import io
+                    if formato == "CSV":
+                        # Tiny geralmente aceita CSV em UTF-8 ou ISO-8859-1 com ponto e vírgula
+                        return dataframe.to_csv(index=False, sep=';', encoding='utf-8-sig').encode('utf-8-sig'), "text/csv", ".csv"
+                    elif formato == "XLS":
+                        output = io.BytesIO()
+                        try:
+                            # Tenta com xlwt
+                            with pd.ExcelWriter(output, engine='xlwt') as writer:
+                                dataframe.to_excel(writer, index=False, sheet_name=sheet_name)
+                            return output.getvalue(), "application/vnd.ms-excel", ".xls"
+                        except Exception:
+                            # Fallback para XLSX se o openpyxl falhar/xlwt não estiver instalado
+                            pass
+                            
+                    # Padrão XLSX
+                    output = io.BytesIO()
+                    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                        dataframe.to_excel(writer, index=False, sheet_name=sheet_name)
+                    return output.getvalue(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", ".xlsx"
+                
                 if not df.empty: 
                     st.dataframe(df, use_container_width=True)
                 
@@ -470,15 +502,12 @@ def main():
                     
                     # Botão de download da planilha de correção
                     if not df_correcao.empty:
-                        import io
-                        output_correcao = io.BytesIO()
-                        with pd.ExcelWriter(output_correcao, engine='openpyxl') as writer:
-                            df_correcao.to_excel(writer, index=False, sheet_name='Correção Tipos')
+                        data_cor, mime_cor, ext_cor = converter_dataframe(df_correcao, formato_download, 'Correção Tipos')
                         st.download_button(
-                            label="🔧 Baixar Planilha de Correção de Tipos (Tiny)",
-                            data=output_correcao.getvalue(),
-                            file_name="Correcao_Tipos_Produto_Tiny.xlsx",
-                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                            label=f"🔧 Baixar Planilha de Correção ({formato_download})",
+                            data=data_cor,
+                            file_name=f"Correcao_Tipos_Produto_Tiny{ext_cor}",
+                            mime=mime_cor,
                             use_container_width=True,
                             type="primary"
                         )
@@ -491,19 +520,15 @@ def main():
                 # ── Planilha de importação de Kits ──
                 df_import_tiny = resultados.get("df_import_tiny_kits", pd.DataFrame())
                 if not df_import_tiny.empty:
-                    import io
-                    output_import = io.BytesIO()
-                    with pd.ExcelWriter(output_import, engine='openpyxl') as writer:
-                        df_import_tiny.to_excel(writer, index=False)
+                    data_imp, mime_imp, ext_imp = converter_dataframe(df_import_tiny, formato_download, 'Importação Kits')
                     st.download_button(
-                        label="📥 Baixar Planilha de Importação Tiny (Kits)",
-                        data=output_import.getvalue(),
-                        file_name="Importacao_Kits_Tiny.xlsx",
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        label=f"📥 Baixar Planilha de Importação Tiny ({formato_download})",
+                        data=data_imp,
+                        file_name=f"Importacao_Kits_Tiny{ext_imp}",
+                        mime=mime_imp,
                         use_container_width=True,
                         type="secondary"
                     )
-                
                 rejeitados = resultados.get("kits_rejeitados_importacao", [])
                 if rejeitados:
                     st.warning(f"⚠️ {len(rejeitados)} kits não podem ser exportados devido a regras do Olist.")
