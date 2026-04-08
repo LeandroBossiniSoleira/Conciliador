@@ -7,30 +7,30 @@ import pandas as pd
 
 
 # ────────────────────────────────────────────
-# Colunas obrigatórias para planilha de correção de tipo de produto
-# (Apenas colunas essenciais para evitar efeitos colaterais na importação)
+# Layout exato de 64 colunas da exportação/importação de produtos do Tiny.
+# Extraído diretamente da planilha exportada pelo Tiny ERP (PlanilhaExemplo.xls).
 # ────────────────────────────────────────────
-import yaml
-from pathlib import Path
 
-CONFIG_DIR = Path(__file__).resolve().parents[2] / "config"
-
-def _carregar_mapa_tiny_reverso() -> dict:
-    """Lê o mapeamento do Tiny do YAML e inverte (Padronizado -> Original)."""
-    try:
-        with open(CONFIG_DIR / "mapa_campos.yaml", encoding="utf-8") as f:
-            mapa = yaml.safe_load(f)
-        mapa_tiny = mapa.get("tiny", {})
-        return {v: k for k, v in mapa_tiny.items()}
-    except Exception:
-        # Fallback de segurança mínimo caso falhe a leitura
-        return {
-            'sku': 'Código (SKU)',
-            'titulo': 'Descrição',
-            'status': 'Situação',
-            'tipo_produto': 'Tipo do produto',
-            'codigo_pai': 'Código do pai'
-        }
+LAYOUT_IMPORTACAO_TINY = [
+    "ID", "Código (SKU)", "Descrição", "Unidade", "Classificação fiscal",
+    "Origem", "Preço", "Valor IPI fixo", "Observações", "Situação",
+    "Estoque", "Preço de custo", "Cód do Fornecedor", "Fornecedor",
+    "Localização", "Estoque máximo", "Estoque mínimo", "Peso líquido (Kg)",
+    "Peso bruto (Kg)", "GTIN/EAN", "GTIN/EAN tributável",
+    "Descrição complementar", "CEST", "Código de Enquadramento IPI",
+    "Formato embalagem", "Largura embalagem", "Altura embalagem",
+    "Comprimento embalagem", "Diâmetro embalagem", "Tipo do produto",
+    "URL imagem 1", "URL imagem 2", "URL imagem 3", "URL imagem 4",
+    "URL imagem 5", "URL imagem 6", "Categoria", "Código do pai",
+    "Variações", "Marca", "Garantia", "Sob encomenda", "Preço promocional",
+    "URL imagem externa 1", "URL imagem externa 2", "URL imagem externa 3",
+    "URL imagem externa 4", "URL imagem externa 5", "URL imagem externa 6",
+    "Link do vídeo", "Título SEO", "Descrição SEO", "Palavras chave SEO",
+    "Slug", "Dias para preparação", "Controlar lotes", "Unidade por caixa",
+    "URL imagem externa 7", "URL imagem externa 8", "URL imagem externa 9",
+    "URL imagem externa 10", "Markup", "Permitir inclusão nas vendas",
+    "EX TIPI"
+]
 
 
 def _buscar_produto_tiny(sku: str, df_tiny: pd.DataFrame) -> pd.Series | None:
@@ -53,45 +53,42 @@ def _tipo_correto(produto_tiny: pd.Series) -> str:
     return 'K'
 
 
-def _montar_linha_correcao(produto_tiny: pd.Series, tipo_esperado: str, mapa_tiny_reverso: dict) -> dict:
-    """Monta uma linha para a planilha de correção mantendo TODAS as colunas originais do Tiny,
-    mas limpando o conteúdo das que não são essenciais/obrigatórias para evitar sobrescrita."""
-    linha = produto_tiny.copy()
+def _montar_linha_correcao(produto_tiny: pd.Series, tipo_esperado: str) -> dict:
+    """Monta uma linha para a planilha de correção mantendo estritamente 
+    o layout de 64 colunas da importação de produtos do Tiny, populando 
+    apenas as informações essenciais para a correção."""
+    
+    # Inicializa a linha com todas as 64 colunas vazias
+    linha_dict = {col: '' for col in LAYOUT_IMPORTACAO_TINY}
     
     # Normaliza o status para o formato aceito pelo Tiny
-    status_raw = linha.get('status', '')
+    status_raw = produto_tiny.get('status', '')
     status_map = {'ATIVO': 'Ativo', 'INATIVO': 'Inativo'}
     situacao = status_map.get(str(status_raw).strip().upper(), str(status_raw) if pd.notna(status_raw) else 'Ativo')
 
     # Limpa o codigo_pai
-    codigo_pai = linha.get('codigo_pai', '')
+    codigo_pai = produto_tiny.get('codigo_pai', '')
     if pd.isna(codigo_pai):
         codigo_pai = ''
         
-    linha['status'] = situacao
-    linha['tipo_produto'] = tipo_esperado
-    linha['codigo_pai'] = codigo_pai
+    # Preenche apenas campos necessários (nomes conforme layout real do Tiny)
+    id_produto = produto_tiny.get('id', '')
+    if pd.isna(id_produto):
+        id_produto = ''
+        
+    linha_dict['ID'] = id_produto
+    linha_dict['Código (SKU)'] = produto_tiny.get('sku', '')
+    linha_dict['Descrição'] = produto_tiny.get('titulo', '')
+    linha_dict['Situação'] = situacao
+    linha_dict['Preço'] = produto_tiny.get('preco', '') if pd.notna(produto_tiny.get('preco', '')) else ''
+    linha_dict['Variações'] = produto_tiny.get('variacoes', '') if pd.notna(produto_tiny.get('variacoes', '')) else ''
+    linha_dict['Tipo do produto'] = tipo_esperado
+    linha_dict['Código do pai'] = codigo_pai
     
-    # Reverte os nomes das colunas padronizadas para as originais
-    linha_revertida = linha.rename(mapa_tiny_reverso)
-    
-    linha_dict = linha_revertida.to_dict()
-    
-    # Lista de colunas originais obrigatórias / essenciais para a atualização não destrutiva
-    COLUNAS_MANTIDAS_LOWER = {
-        'id',
-        'código (sku)',
-        'descrição',
-        'situação',
-        'tipo do produto',
-        'código do pai',
-        'sob encomenda'
-    }
-    
-    # Limpar qualquer coluna que não esteja na lista de mantidas (preservando o layout)
-    for col in linha_dict:
-        if str(col).strip().lower() not in COLUNAS_MANTIDAS_LOWER:
-            linha_dict[col] = ''
+    # Conserva regra para campo "sob encomenda" se houver
+    sob_encomenda = produto_tiny.get('sob_encomenda', '')
+    if pd.notna(sob_encomenda):
+        linha_dict['Sob encomenda'] = sob_encomenda
             
     return linha_dict
 
@@ -119,8 +116,6 @@ def verificar_tipos_produto(
 
     if df_tiny_produtos_norm is None or df_tiny_produtos_norm.empty:
         return alertas, correcoes
-        
-    mapa_tiny_reverso = _carregar_mapa_tiny_reverso()
 
     for sku in skus_para_verificar:
         produto = _buscar_produto_tiny(sku, df_tiny_produtos_norm)
@@ -136,7 +131,7 @@ def verificar_tipos_produto(
                 'tipo_atual': tipo_atual if tipo_atual else '(vazio)',
                 'tipo_esperado': tipo_esperado,
             })
-            correcoes.append(_montar_linha_correcao(produto, tipo_esperado, mapa_tiny_reverso))
+            correcoes.append(_montar_linha_correcao(produto, tipo_esperado))
 
     return alertas, correcoes
 
