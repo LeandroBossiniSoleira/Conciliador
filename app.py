@@ -20,7 +20,7 @@ if str(ROOT) not in sys.path:
 
 from src.loaders.magis_loader import carregar_magis
 from src.loaders.tiny_loader import carregar_tiny
-from src.loaders.kits_loader import carregar_kits_magis, carregar_kits_tiny
+from src.loaders.kits_loader import carregar_kits_magis, carregar_kits_tiny, enriquecer_status_kits
 from src.normalizers.normalizador import normalizar_dataframe
 from src.comparators.comparador_produtos import executar_comparacao
 from src.comparators.comparador_kits import comparar_kits
@@ -290,6 +290,7 @@ def main():
 
     resultados: dict[str, pd.DataFrame] = {}
     tiny_norm = None
+    magis_norm = None
 
     # Processamento de Produtos
     if tem_produtos:
@@ -329,6 +330,8 @@ def main():
         with st.spinner('Processando e comparando planilhas de Kits...'):
             try:
                 magis_kits_raw = carregar_kits_magis(files_magis_kits) if files_magis_kits else pd.DataFrame()
+                if not magis_kits_raw.empty:
+                    magis_kits_raw = enriquecer_status_kits(magis_kits_raw, magis_norm)
                 tiny_kits_raw = carregar_kits_tiny(files_tiny_kits) if files_tiny_kits else pd.DataFrame()
                 
                 res_kits = comparar_kits(magis_kits_raw, tiny_kits_raw)

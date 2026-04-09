@@ -28,7 +28,8 @@ def comparar_kits(df_magis: pd.DataFrame, df_tiny: pd.DataFrame) -> dict[str, pd
         df_magis_grouped = df_magis.sort_values(by=['sku_kit', 'sku_componente']).groupby('sku_kit').apply(
             lambda x: pd.Series({
                 'componentes': tuple(zip(x['sku_componente'].astype(str), x['qtd_componente'])),
-                'titulo_kit': x['titulo_kit'].iloc[0] if 'titulo_kit' in x.columns else ''
+                'titulo_kit': x['titulo_kit'].iloc[0] if 'titulo_kit' in x.columns else '',
+                'status_kit': x['status_kit'].iloc[0] if 'status_kit' in x.columns else 'DESCONHECIDO',
             }),
             include_groups=False
         ).reset_index()
@@ -100,18 +101,22 @@ def comparar_kits(df_magis: pd.DataFrame, df_tiny: pd.DataFrame) -> dict[str, pd
     somente_tiny['componentes_formatados'] = somente_tiny['componentes_tiny'].apply(format_components)
     
     # Select cols
-    cols_magis = ['sku_kit', 'titulo_kit_magis', 'componentes_formatados']
+    # 'status_kit' existe apenas no lado Magis, então o merge não aplica sufixo a ele.
+    cols_magis = ['sku_kit', 'status_kit', 'titulo_kit_magis', 'componentes_formatados']
     cols_tiny = ['sku_kit', 'titulo_kit_tiny', 'componentes_formatados']
-    
+
     df_somente_magis = somente_magis[[c for c in cols_magis if c in somente_magis.columns]]
     df_somente_tiny = somente_tiny[[c for c in cols_tiny if c in somente_tiny.columns]]
-    
+
     df_divergentes = pd.DataFrame(divergentes) if divergentes else pd.DataFrame(columns=[
         'sku_kit', 'titulo_kit_magis', 'titulo_kit_tiny', 'componentes_magis', 'componentes_tiny'
     ])
-    
+
     # Rename columns for presentation
-    df_somente_magis = df_somente_magis.rename(columns={'titulo_kit_magis': 'titulo_kit', 'componentes_formatados': 'componentes (SKU e Qtd)'})
+    df_somente_magis = df_somente_magis.rename(columns={
+        'titulo_kit_magis': 'titulo_kit',
+        'componentes_formatados': 'componentes (SKU e Qtd)',
+    })
     df_somente_tiny = df_somente_tiny.rename(columns={'titulo_kit_tiny': 'titulo_kit', 'componentes_formatados': 'componentes (SKU e Qtd)'})
     
     return {

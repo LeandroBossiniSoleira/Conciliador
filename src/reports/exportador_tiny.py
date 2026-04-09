@@ -191,6 +191,21 @@ def gerar_planilha_importacao_tiny(
     for sku_kit, gru in df_filtrado.groupby('sku_kit'):
         titulo_kit_raw = gru['titulo_kit'].iloc[0] if 'titulo_kit' in gru.columns else ''
         
+        # Validação 0: Kit inativo no Magis
+        if "status_kit" in gru.columns:
+            status_kit = str(gru["status_kit"].iloc[0]).upper()
+            if status_kit != "ATIVO":
+                label = "inativo" if status_kit == "INATIVO" else "com status desconhecido"
+                rejeitados.append({
+                    "sku_kit": sku_kit,
+                    "titulo_kit": titulo_kit_raw,
+                    "motivo": (
+                        f"Kit {label} no Magis (produto correspondente está {label} "
+                        "ou não existe no cadastro de produtos)."
+                    ),
+                })
+                continue
+
         # Validação 1: Quantidade limite de itens
         if len(gru) > 20:
             rejeitados.append({

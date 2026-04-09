@@ -14,6 +14,42 @@ def _carregar_mapa() -> dict:
     with open(CONFIG_DIR / "mapa_campos.yaml", encoding="utf-8") as f:
         return yaml.safe_load(f)
 
+def enriquecer_status_kits(df_kits: pd.DataFrame, df_produtos: pd.DataFrame | None) -> pd.DataFrame:
+    """
+    Enriquece o DataFrame de kits com o status (ATIVO/INATIVO) derivado do
+    cadastro de produtos do Magis.
+
+    Regra de negócio:
+      - ATIVO  → kit existe nos produtos e está marcado como ATIVO
+      - INATIVO → kit não existe nos produtos, está inativo ou excluído
+      - DESCONHECIDO → planilha de produtos não foi carregada
+
+    Parâmetros
+    ----------
+    df_kits : DataFrame com coluna 'sku_kit'
+    df_produtos : DataFrame normalizado (colunas 'sku' e 'status').
+                  Pode ser None quando a planilha de produtos não foi carregada.
+    """
+    df = df_kits.copy()
+
+    if df_produtos is None or df_produtos.empty or "status" not in df_produtos.columns:
+        df["status_kit"] = "DESCONHECIDO"
+        return df
+
+    status_por_sku: dict[str, str] = (
+        df_produtos.set_index("sku")["status"].astype(str).str.upper().to_dict()
+    )
+
+    def _resolver(sku_kit: str) -> str:
+        status = status_por_sku.get(str(sku_kit))
+        if status is None:
+            return "INATIVO"
+        return "ATIVO" if status == "ATIVO" else "INATIVO"
+
+    df["status_kit"] = df["sku_kit"].astype(str).map(_resolver)
+    return df
+
+
 def carregar_kits_magis(arquivos) -> pd.DataFrame:
     mapa = _carregar_mapa()
     colunas = mapa.get("magis_kits", {})
