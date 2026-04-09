@@ -146,77 +146,112 @@ st.markdown("""
 def exibir_metricas_produtos(resultados: dict[str, pd.DataFrame]):
     """Exibe cards de métricas para Produtos."""
     st.markdown("### 📊 Visão Geral de Produtos")
-    
+
     col1, col2, col3, col4 = st.columns(4)
-    
+
     with col1:
         total_nos_dois = len(resultados.get('presente_nos_dois', []))
         st.markdown(f"""
         <div class="metric-card">
             <div class="metric-value nos-dois">{total_nos_dois}</div>
-            <div class="metric-label">✅ Presentes nos Dois</div>
+            <div class="metric-label">✅ Sincronizados (OK)</div>
         </div>
         """, unsafe_allow_html=True)
-        
+
     with col2:
         total_somente_magis = len(resultados.get('somente_magis', []))
         st.markdown(f"""
         <div class="metric-card">
             <div class="metric-value magis">{total_somente_magis}</div>
-            <div class="metric-label">🔍 Exclusivo Magis</div>
+            <div class="metric-label">→ Importar no Tiny</div>
         </div>
         """, unsafe_allow_html=True)
-        
+
     with col3:
         total_somente_tiny = len(resultados.get('somente_tiny', []))
         st.markdown(f"""
         <div class="metric-card">
             <div class="metric-value tiny">{total_somente_tiny}</div>
-            <div class="metric-label">📦 Exclusivo Tiny</div>
+            <div class="metric-label">⚠️ Revisar no Tiny</div>
         </div>
         """, unsafe_allow_html=True)
-        
+
     with col4:
         total_erros_fiscais = len(resultados.get('divergencias_fiscais', []))
         st.markdown(f"""
         <div class="metric-card">
             <div class="metric-value divergente">{total_erros_fiscais}</div>
-            <div class="metric-label">⚠️ Divergência Fiscal</div>
+            <div class="metric-label">✕ Divergência Fiscal</div>
         </div>
         """, unsafe_allow_html=True)
+
+    # Nota sobre inativos filtrados
+    ignorados_magis = len(resultados.get('somente_magis_inativos', []))
+    ignorados_tiny  = len(resultados.get('somente_tiny_inativos', []))
+    total_ignorados = ignorados_magis + ignorados_tiny
+    if total_ignorados > 0:
+        partes = []
+        if ignorados_magis:
+            partes.append(f"{ignorados_magis} no Magis")
+        if ignorados_tiny:
+            partes.append(f"{ignorados_tiny} no Tiny")
+        st.caption(f"ℹ️ {total_ignorados} produto(s) inativo(s) ignorado(s) nesta análise ({', '.join(partes)}).")
 
 def exibir_metricas_kits(resultados: dict[str, pd.DataFrame]):
     """Exibe cards de métricas para Kits."""
     st.markdown("### 📦 Visão Geral de Kits")
-    
-    col1, col2, col3 = st.columns(3)
-    
+
+    col1, col2, col3, col4 = st.columns(4)
+
     with col1:
+        total_nos_dois = len(resultados.get('kits_nos_dois', []))
+        st.markdown(f"""
+        <div class="metric-card">
+            <div class="metric-value nos-dois">{total_nos_dois}</div>
+            <div class="metric-label">✅ Sincronizados (OK)</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with col2:
         total_somente_magis = len(resultados.get('kits_somente_magis', []))
         st.markdown(f"""
         <div class="metric-card">
             <div class="metric-value magis">{total_somente_magis}</div>
-            <div class="metric-label">🔍 Kits Exclusivo Magis</div>
+            <div class="metric-label">→ Importar no Tiny</div>
         </div>
         """, unsafe_allow_html=True)
-        
-    with col2:
+
+    with col3:
         total_somente_tiny = len(resultados.get('kits_somente_tiny', []))
         st.markdown(f"""
         <div class="metric-card">
             <div class="metric-value tiny">{total_somente_tiny}</div>
-            <div class="metric-label">📦 Kits Exclusivo Tiny</div>
+            <div class="metric-label">⚠️ Revisar no Tiny</div>
         </div>
         """, unsafe_allow_html=True)
-        
-    with col3:
+
+    with col4:
         total_divergentes = len(resultados.get('kits_divergentes', []))
         st.markdown(f"""
         <div class="metric-card">
             <div class="metric-value divergente">{total_divergentes}</div>
-            <div class="metric-label">⚠️ Kits Divergentes (Composição)</div>
+            <div class="metric-label">✕ Composição Divergente</div>
         </div>
         """, unsafe_allow_html=True)
+
+    # Nota sobre inativos/desconhecidos filtrados
+    ignorados = len(resultados.get('kits_somente_magis_inativos', []))
+    desconhecidos = len(resultados.get('kits_somente_magis_desconhecido', []))
+    partes = []
+    if ignorados:
+        partes.append(f"{ignorados} inativo(s)")
+    if desconhecidos:
+        partes.append(f"{desconhecidos} com status desconhecido")
+    if partes:
+        st.caption(
+            f"ℹ️ {sum([ignorados, desconhecidos])} kit(s) do Magis ignorado(s) nesta análise "
+            f"({', '.join(partes)}). Status desconhecido ocorre quando a planilha de produtos não foi carregada."
+        )
 
 
 def main():
@@ -336,9 +371,12 @@ def main():
                 
                 res_kits = comparar_kits(magis_kits_raw, tiny_kits_raw)
                 
-                resultados["kits_somente_magis"] = res_kits["somente_magis"]
-                resultados["kits_somente_tiny"] = res_kits["somente_tiny"]
-                resultados["kits_divergentes"] = res_kits["divergentes"]
+                resultados["kits_somente_magis"]             = res_kits["somente_magis"]
+                resultados["kits_somente_magis_inativos"]    = res_kits.get("somente_magis_inativos", pd.DataFrame())
+                resultados["kits_somente_magis_desconhecido"] = res_kits.get("somente_magis_desconhecido", pd.DataFrame())
+                resultados["kits_somente_tiny"]              = res_kits["somente_tiny"]
+                resultados["kits_divergentes"]               = res_kits["divergentes"]
+                resultados["kits_nos_dois"]                  = res_kits.get("nos_dois", pd.DataFrame())
                 
                 df_import_tiny_kits, kits_rejeitados, df_correcao_tipos, alertas_tipo = gerar_planilha_importacao_tiny(
                     magis_kits_raw, 
@@ -452,7 +490,16 @@ def main():
             ])
             with tabs_k[0]:
                 df = resultados.get("kits_somente_magis", pd.DataFrame())
-                st.markdown(f"**{len(df)} Kits exclusivos do Magis.**")
+                st.markdown(f"**{len(df)} kits ativos no Magis que precisam ser importados no Tiny.**")
+
+                df_desconhecido = resultados.get("kits_somente_magis_desconhecido", pd.DataFrame())
+                if not df_desconhecido.empty:
+                    st.warning(
+                        f"⚠️ {len(df_desconhecido)} kit(s) com status **desconhecido** foram separados abaixo. "
+                        "Para classificá-los corretamente, carregue também a planilha de Produtos do Magis."
+                    )
+                    with st.expander(f"Ver {len(df_desconhecido)} kit(s) com status desconhecido"):
+                        st.dataframe(df_desconhecido, use_container_width=True)
                 
                 # Helper function para conversão de dataframes ao formato escolhido
                 def converter_dataframe(dataframe: pd.DataFrame, formato: str, sheet_name: str):

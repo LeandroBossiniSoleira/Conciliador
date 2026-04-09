@@ -60,17 +60,29 @@ def comparar_kits(df_magis: pd.DataFrame, df_tiny: pd.DataFrame) -> dict[str, pd
     )
 
     somente_magis = merged[merged['_merge'] == 'left_only'].copy()
-    somente_tiny = merged[merged['_merge'] == 'right_only'].copy()
-    
+    somente_tiny  = merged[merged['_merge'] == 'right_only'].copy()
+
+    # Separar kits inativos/excluídos do Magis — não são problemas de migração
+    somente_magis_inativos     = pd.DataFrame()
+    somente_magis_desconhecido = pd.DataFrame()
+    if 'status_kit' in somente_magis.columns:
+        status_upper = somente_magis['status_kit'].fillna('').str.upper()
+        somente_magis_inativos     = somente_magis[status_upper.isin({'INATIVO', 'EXCLUIDO'})].copy()
+        somente_magis_desconhecido = somente_magis[status_upper == 'DESCONHECIDO'].copy()
+        somente_magis              = somente_magis[status_upper == 'ATIVO'].copy()
+
     nos_dois = merged[merged['_merge'] == 'both'].copy()
     
     # Identify divergent kits
     divergentes = []
+    nos_dois_iguais = pd.DataFrame()
     if not nos_dois.empty:
         nos_dois['componentes_iguais'] = nos_dois.apply(
             lambda row: set(row['componentes_magis']) == set(row['componentes_tiny']),
             axis=1
         )
+        nos_dois_iguais = nos_dois[nos_dois['componentes_iguais']][['sku_kit', 'titulo_kit_magis']].copy()
+        nos_dois_iguais = nos_dois_iguais.rename(columns={'titulo_kit_magis': 'titulo_kit'})
         divergentes_df = nos_dois[~nos_dois['componentes_iguais']].copy()
         
         # Flatten the divergentes to show rows nicely in UI
@@ -92,7 +104,7 @@ def comparar_kits(df_magis: pd.DataFrame, df_tiny: pd.DataFrame) -> dict[str, pd
             })
 
     # Prepare final display DataFrames for only Magis / Tiny
-    def format_components(comp_tuple):
+    def format_components(comp_tuple):  # noqa: E301
         if not comp_tuple or pd.isna(comp_tuple): return ""
         if isinstance(comp_tuple, str): return comp_tuple
         return "\\n".join([f"{sku} ({qtd}x)" for sku, qtd in comp_tuple])
@@ -119,8 +131,21 @@ def comparar_kits(df_magis: pd.DataFrame, df_tiny: pd.DataFrame) -> dict[str, pd
     })
     df_somente_tiny = df_somente_tiny.rename(columns={'titulo_kit_tiny': 'titulo_kit', 'componentes_formatados': 'componentes (SKU e Qtd)'})
     
+    # Formatar colunas mínimas dos inativos/desconhecidos para display
+    def _fmt_subset(df_sub: pd.DataFrame) -> pd.DataFrame:
+        if df_sub.empty:
+            return pd.DataFrame(columns=['sku_kit', 'status_kit', 'titulo_kit'])
+        cols = [c for c in ['sku_kit', 'status_kit', 'titulo_kit_magis'] if c in df_sub.columns]
+        out = df_sub[cols].copy()
+        if 'titulo_kit_magis' in out.columns:
+            out = out.rename(columns={'titulo_kit_magis': 'titulo_kit'})
+        return out
+
     return {
-        "somente_magis": df_somente_magis,
-        "somente_tiny": df_somente_tiny,
-        "divergentes": df_divergentes
+        "somente_magis":             df_somente_magis,
+        "somente_magis_inativos":    _fmt_subset(somente_magis_inativos),
+        "somente_magis_desconhecido": _fmt_subset(somente_magis_desconhecido),
+        "somente_tiny":              df_somente_tiny,
+        "divergentes":               df_divergentes,
+        "nos_dois":                  nos_dois_iguais,
     }

@@ -14,6 +14,28 @@ from src.validators.duplicidades import relatorio_duplicidades
 
 
 # ────────────────────────────────────────────
+# Status
+# ────────────────────────────────────────────
+
+_STATUSES_INATIVOS = {"INATIVO", "EXCLUIDO"}
+
+
+def _separar_por_status(
+    df: pd.DataFrame, col_status: str
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """
+    Divide *df* em (ativos, inativos).
+
+    Registros com status ausente ou não reconhecido são considerados ativos
+    para não suprimir dados potencialmente válidos.
+    """
+    if col_status not in df.columns:
+        return df.copy(), pd.DataFrame(columns=df.columns)
+    mask_inativo = df[col_status].fillna("").str.upper().isin(_STATUSES_INATIVOS)
+    return df[~mask_inativo].copy(), df[mask_inativo].copy()
+
+
+# ────────────────────────────────────────────
 # Classificação
 # ────────────────────────────────────────────
 
@@ -104,13 +126,19 @@ def executar_comparacao(
     resultados["comparativo_geral"] = comp
 
     # 2) Segmentar
-    somente_magis = comp[comp["classificacao"] == "SOMENTE_MAGIS"].copy()
-    somente_tiny = comp[comp["classificacao"] == "SOMENTE_TINY"].copy()
+    somente_magis_raw = comp[comp["classificacao"] == "SOMENTE_MAGIS"].copy()
+    somente_tiny_raw  = comp[comp["classificacao"] == "SOMENTE_TINY"].copy()
     nos_dois = comp[comp["classificacao"] == "PRESENTE_NOS_DOIS"].copy()
 
-    resultados["somente_magis"] = somente_magis
-    resultados["somente_tiny"] = somente_tiny
-    resultados["presente_nos_dois"] = nos_dois
+    # Remover inativos/excluídos — não exigem ação de migração
+    somente_magis, somente_magis_inativos = _separar_por_status(somente_magis_raw, "status_magis")
+    somente_tiny,  somente_tiny_inativos  = _separar_por_status(somente_tiny_raw,  "status_tiny")
+
+    resultados["somente_magis"]          = somente_magis
+    resultados["somente_magis_inativos"] = somente_magis_inativos
+    resultados["somente_tiny"]           = somente_tiny
+    resultados["somente_tiny_inativos"]  = somente_tiny_inativos
+    resultados["presente_nos_dois"]      = nos_dois
 
     # 3) Divergências fiscais (registros que estão nos dois)
     resultados["divergencias_fiscais"] = detectar_divergencias(nos_dois)
