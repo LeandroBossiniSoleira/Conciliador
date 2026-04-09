@@ -33,6 +33,58 @@ LAYOUT_IMPORTACAO_TINY = [
 ]
 
 
+_STATUS_TINY = {'ATIVO': 'Ativo', 'INATIVO': 'Inativo', 'EXCLUIDO': 'Inativo'}
+
+
+def gerar_planilha_importacao_produtos_tiny(df_magis: pd.DataFrame) -> pd.DataFrame:
+    """
+    Converte o DataFrame normalizado do Magis para o layout de 64 colunas
+    aceito pela importação de produtos do Olist Tiny.
+
+    Parâmetros
+    ----------
+    df_magis : pd.DataFrame
+        Subset do DataFrame normalizado do Magis (apenas os produtos a importar).
+        Deve conter as colunas padronizadas produzidas por `normalizar_dataframe`.
+
+    Retorna
+    -------
+    pd.DataFrame com as 64 colunas do Tiny, pronto para exportar como .xlsx/.csv.
+    """
+    def _get(row: pd.Series, field: str) -> str:
+        val = row.get(field, "")
+        return "" if pd.isna(val) else str(val)
+
+    rows = []
+    for _, row in df_magis.iterrows():
+        linha: dict = {col: "" for col in LAYOUT_IMPORTACAO_TINY}
+
+        status_raw = _get(row, "status").upper()
+
+        linha["Código (SKU)"]         = _get(row, "sku")
+        linha["Descrição"]            = _get(row, "titulo")
+        linha["Situação"]             = _STATUS_TINY.get(status_raw, "Ativo")
+        linha["GTIN/EAN"]             = _get(row, "ean")
+        linha["GTIN/EAN tributável"]  = _get(row, "ean_tributavel")
+        linha["Classificação fiscal"] = _get(row, "ncm")
+        linha["CEST"]                 = _get(row, "cest")
+        linha["Origem"]               = _get(row, "origem")
+        linha["Preço de custo"]       = _get(row, "preco_custo")
+        linha["Estoque"]              = _get(row, "estoque")
+        linha["Localização"]          = _get(row, "localizacao")
+        linha["Marca"]                = _get(row, "marca")
+        linha["Peso líquido (Kg)"]    = _get(row, "peso_kg")
+        linha["Peso bruto (Kg)"]      = _get(row, "peso_kg")
+        linha["Altura embalagem"]     = _get(row, "altura_cm")
+        linha["Largura embalagem"]    = _get(row, "largura_cm")
+        linha["Comprimento embalagem"] = _get(row, "comprimento_cm")
+        linha["Tipo do produto"]      = "P"  # produto simples
+
+        rows.append(linha)
+
+    return pd.DataFrame(rows, columns=LAYOUT_IMPORTACAO_TINY)
+
+
 def _buscar_produto_tiny(sku: str, df_tiny: pd.DataFrame) -> pd.Series | None:
     """Localiza um produto no DataFrame normalizado do Tiny pelo SKU."""
     match = df_tiny[df_tiny['sku'].astype(str) == str(sku)]
