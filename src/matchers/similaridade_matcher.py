@@ -4,10 +4,14 @@ Usa rapidfuzz para sugerir correspondência entre títulos de produtos
 que não bateram por SKU nem EAN.
 """
 
+import logging
+
 import pandas as pd
 import yaml
 from pathlib import Path
-from rapidfuzz import fuzz
+from rapidfuzz import fuzz, process
+
+logger = logging.getLogger(__name__)
 
 
 CONFIG_DIR = Path(__file__).resolve().parents[2] / "config"
@@ -58,43 +62,53 @@ def sugerir_matches_por_titulo(
     limiar_match = limiares.get("match_provavel", 90)
     limiar_revisar = limiares.get("revisar", 80)
 
+    # Preparar dados do Tiny (choices para o rapidfuzz)
+    titulos_tiny = somente_tiny[["sku", "titulo"]].dropna(subset=["titulo"])
+    if titulos_tiny.empty:
+        return pd.DataFrame()
+
+    tiny_titulos_list = titulos_tiny["titulo"].tolist()
+    tiny_skus_list = titulos_tiny["sku"].tolist()
+
+    # Preparar dados do Magis (queries)
+    magis_com_titulo = somente_magis[["sku", "titulo"]].dropna(subset=["titulo"])
+    if magis_com_titulo.empty:
+        return pd.DataFrame()
+
+    logger.info(
+        "Matching por similaridade: %d produtos Magis × %d produtos Tiny",
+        len(magis_com_titulo), len(titulos_tiny),
+    )
+
     resultados = []
 
-    titulos_tiny = somente_tiny[["sku", "titulo"]].dropna(subset=["titulo"])
+    for _, row_m in magis_com_titulo.iterrows():
+        titulo_m = row_m["titulo"]
+        sku_m = row_m["sku"]
 
-    for _, row_m in somente_magis.iterrows():
-        titulo_m = row_m.get("titulo")
-        sku_m = row_m.get("sku")
+        # process.extract retorna lista de (match, score, index) — vetorizado em C++
+        matches = process.extract(
+            titulo_m,
+            tiny_titulos_list,
+            scorer=fuzz.token_sort_ratio,
+            limit=top_n,
+            score_cutoff=limiar_revisar,
+        )
 
-        if not titulo_m:
-            continue
-
-        scores = []
-        for _, row_t in titulos_tiny.iterrows():
-            score = similaridade(titulo_m, row_t["titulo"])
-            if score >= limiar_revisar:
-                scores.append(
-                    {
-                        "sku_magis": sku_m,
-                        "titulo_magis": titulo_m,
-                        "sku_tiny": row_t["sku"],
-                        "titulo_tiny": row_t["titulo"],
-                        "score": round(score, 2),
-                    }
-                )
-
-        # Ordena e pega os top_n
-        scores.sort(key=lambda x: x["score"], reverse=True)
-        resultados.extend(scores[:top_n])
+        for titulo_tiny, score, idx in matches:
+            resultados.append({
+                "sku_magis": sku_m,
+                "titulo_magis": titulo_m,
+                "sku_tiny": tiny_skus_list[idx],
+                "titulo_tiny": titulo_tiny,
+                "score": round(score, 2),
+            })
 
     df = pd.DataFrame(resultados)
 
     if not df.empty:
         df["classificacao"] = df["score"].apply(
-            lambda s: (
-                "MATCH_PROVAVEL" if s >= limiar_match
-                else "REVISAR"
-            )
+            lambda s: "MATCH_PROVAVEL" if s >= limiar_match else "REVISAR"
         )
 
     return df

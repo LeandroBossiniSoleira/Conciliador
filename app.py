@@ -477,85 +477,111 @@ def main():
         st.error("⚠️ Para comparar **Kits**, envie as planilhas de **ambos** os sistemas (Magis e Tiny).")
         return
 
-    resultados: dict[str, pd.DataFrame] = {}
-    tiny_norm = None
-    magis_norm = None
+    # ── Cache via session_state para evitar reprocessamento a cada interação ──
+    def _gerar_cache_key(files_list: list | None) -> str:
+        """Gera uma chave única baseada nos nomes e tamanhos dos arquivos."""
+        if not files_list:
+            return ""
+        return "|".join(sorted(f"{f.name}:{f.size}" for f in files_list))
 
-    # Processamento de Produtos
-    if tem_produtos:
-        with st.spinner('Lendo planilhas de Produtos e normalizando dados...'):
+    cache_key = _gerar_cache_key(files_magis) + ";" + _gerar_cache_key(files_tiny) + ";" + \
+                _gerar_cache_key(files_magis_kits) + ";" + _gerar_cache_key(files_tiny_kits)
+
+    # Se já processou com os mesmos arquivos, reutiliza os resultados
+    if not comecar and "resultados" in st.session_state and st.session_state.get("cache_key") == cache_key:
+        resultados = st.session_state["resultados"]
+        caminho_excel = st.session_state["caminho_excel"]
+        tem_kits = st.session_state["tem_kits"]
+        tiny_norm = st.session_state.get("tiny_norm")
+        magis_norm = st.session_state.get("magis_norm")
+    else:
+        resultados: dict[str, pd.DataFrame] = {}
+        tiny_norm = None
+        magis_norm = None
+
+        # Processamento de Produtos
+        if tem_produtos:
+            with st.spinner('Lendo planilhas de Produtos e normalizando dados...'):
+                try:
+                    magis_raw = carregar_magis(files_magis)
+                    tiny_raw = carregar_tiny(files_tiny)
+
+                    if magis_raw.empty or tiny_raw.empty:
+                        st.error("⚠️ Uma das planilhas de produto está vazia.")
+                        return
+
+                    if "sku" not in magis_raw.columns:
+                        st.error("⚠️ **Erro Crítico:** A coluna `sku` não foi encontrada no Magis após o mapeamento.")
+                        return
+
+                    if "sku" not in tiny_raw.columns:
+                        st.error("⚠️ **Erro Crítico:** A coluna `sku` não foi encontrada no Tiny após o mapeamento.")
+                        return
+
+                    magis_norm = normalizar_dataframe(magis_raw, sistema="magis")
+                    tiny_norm = normalizar_dataframe(tiny_raw, sistema="tiny")
+
+                except Exception as e:
+                    st.error(f"Erro ao carregar e normalizar Produtos: {str(e)}")
+                    return
+
+            with st.spinner('Cruzando bases de Produtos e identificando divergências...'):
+                try:
+                    resultados = executar_comparacao(magis_norm, tiny_norm)
+                    resultados["magis_norm"] = magis_norm  # necessário para gerar planilha de importação
+                except Exception as e:
+                    st.error(f"Erro durante a comparação de Produtos: {str(e)}")
+                    return
+
+        # Processamento de Kits
+        if tem_kits:
+            with st.spinner('Processando e comparando planilhas de Kits...'):
+                try:
+                    magis_kits_raw = carregar_kits_magis(files_magis_kits) if files_magis_kits else pd.DataFrame()
+                    if not magis_kits_raw.empty:
+                        magis_kits_raw = enriquecer_status_kits(magis_kits_raw, magis_norm)
+                    tiny_kits_raw = carregar_kits_tiny(files_tiny_kits) if files_tiny_kits else pd.DataFrame()
+
+                    res_kits = comparar_kits(magis_kits_raw, tiny_kits_raw)
+
+                    resultados["kits_somente_magis"]             = res_kits["somente_magis"]
+                    resultados["kits_somente_magis_inativos"]    = res_kits.get("somente_magis_inativos", pd.DataFrame())
+                    resultados["kits_somente_magis_desconhecido"] = res_kits.get("somente_magis_desconhecido", pd.DataFrame())
+                    resultados["kits_somente_tiny"]              = res_kits["somente_tiny"]
+                    resultados["kits_divergentes"]               = res_kits["divergentes"]
+                    resultados["kits_nos_dois"]                  = res_kits.get("nos_dois", pd.DataFrame())
+
+                    df_import_tiny_kits, kits_rejeitados, df_correcao_tipos, alertas_tipo = gerar_planilha_importacao_tiny(
+                        magis_kits_raw,
+                        res_kits["somente_magis"],
+                        tiny_norm
+                    )
+                    resultados["df_import_tiny_kits"] = df_import_tiny_kits
+                    resultados["kits_rejeitados_importacao"] = kits_rejeitados
+                    resultados["df_correcao_tipos"] = df_correcao_tipos
+                    resultados["alertas_tipo"] = alertas_tipo
+
+                except Exception as e:
+                    st.error(f"Erro ao avaliar Kits: {str(e)}")
+                    tem_kits = False
+
+        with st.spinner('Gerando Relatório Consolidado...'):
             try:
-                magis_raw = carregar_magis(files_magis)
-                tiny_raw = carregar_tiny(files_tiny)
-                
-                if magis_raw.empty or tiny_raw.empty:
-                    st.error("⚠️ Uma das planilhas de produto está vazia.")
-                    return
-                    
-                if "sku" not in magis_raw.columns:
-                    st.error("⚠️ **Erro Crítico:** A coluna `sku` não foi encontrada no Magis após o mapeamento.")
-                    return
-                    
-                if "sku" not in tiny_raw.columns:
-                    st.error("⚠️ **Erro Crítico:** A coluna `sku` não foi encontrada no Tiny após o mapeamento.")
-                    return
-                
-                magis_norm = normalizar_dataframe(magis_raw, sistema="magis")
-                tiny_norm = normalizar_dataframe(tiny_raw, sistema="tiny")
-                
+                output_dir = ROOT / "data" / "output"
+                output_dir.mkdir(parents=True, exist_ok=True)
+                caminho_excel = str(output_dir / "comparativo_temp.xlsx")
+                gerar_excel(resultados, caminho_excel)
             except Exception as e:
-                st.error(f"Erro ao carregar e normalizar Produtos: {str(e)}")
+                st.error(f"Erro ao gerar Excel: {str(e)}")
                 return
 
-        with st.spinner('Cruzando bases de Produtos e identificando divergências...'):
-            try:
-                resultados = executar_comparacao(magis_norm, tiny_norm)
-                resultados["magis_norm"] = magis_norm  # necessário para gerar planilha de importação
-            except Exception as e:
-                st.error(f"Erro durante a comparação de Produtos: {str(e)}")
-                return
-
-    # Processamento de Kits
-    if tem_kits:
-        with st.spinner('Processando e comparando planilhas de Kits...'):
-            try:
-                magis_kits_raw = carregar_kits_magis(files_magis_kits) if files_magis_kits else pd.DataFrame()
-                if not magis_kits_raw.empty:
-                    magis_kits_raw = enriquecer_status_kits(magis_kits_raw, magis_norm)
-                tiny_kits_raw = carregar_kits_tiny(files_tiny_kits) if files_tiny_kits else pd.DataFrame()
-                
-                res_kits = comparar_kits(magis_kits_raw, tiny_kits_raw)
-                
-                resultados["kits_somente_magis"]             = res_kits["somente_magis"]
-                resultados["kits_somente_magis_inativos"]    = res_kits.get("somente_magis_inativos", pd.DataFrame())
-                resultados["kits_somente_magis_desconhecido"] = res_kits.get("somente_magis_desconhecido", pd.DataFrame())
-                resultados["kits_somente_tiny"]              = res_kits["somente_tiny"]
-                resultados["kits_divergentes"]               = res_kits["divergentes"]
-                resultados["kits_nos_dois"]                  = res_kits.get("nos_dois", pd.DataFrame())
-                
-                df_import_tiny_kits, kits_rejeitados, df_correcao_tipos, alertas_tipo = gerar_planilha_importacao_tiny(
-                    magis_kits_raw, 
-                    res_kits["somente_magis"], 
-                    tiny_norm
-                )
-                resultados["df_import_tiny_kits"] = df_import_tiny_kits
-                resultados["kits_rejeitados_importacao"] = kits_rejeitados
-                resultados["df_correcao_tipos"] = df_correcao_tipos
-                resultados["alertas_tipo"] = alertas_tipo
-                
-            except Exception as e:
-                st.error(f"Erro ao avaliar Kits: {str(e)}")
-                tem_kits = False
-
-    with st.spinner('Gerando Relatório Consolidado...'):
-        try:
-            output_dir = ROOT / "data" / "output"
-            output_dir.mkdir(parents=True, exist_ok=True)
-            caminho_excel = str(output_dir / "comparativo_temp.xlsx")
-            gerar_excel(resultados, caminho_excel)
-        except Exception as e:
-            st.error(f"Erro ao gerar Excel: {str(e)}")
-            return
+        # Salva no session_state para reutilizar em re-runs
+        st.session_state["resultados"] = resultados
+        st.session_state["caminho_excel"] = caminho_excel
+        st.session_state["cache_key"] = cache_key
+        st.session_state["tem_kits"] = tem_kits
+        st.session_state["tiny_norm"] = tiny_norm
+        st.session_state["magis_norm"] = magis_norm
 
     # Sucesso
     st.toast("Análise finalizada com sucesso!", icon="✅")
