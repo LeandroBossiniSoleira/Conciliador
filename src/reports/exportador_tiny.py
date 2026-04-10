@@ -73,8 +73,8 @@ def gerar_planilha_importacao_produtos_tiny(df_magis: pd.DataFrame) -> pd.DataFr
         linha["Estoque"]              = _get(row, "estoque")
         linha["Localização"]          = _get(row, "localizacao")
         linha["Marca"]                = _get(row, "marca")
-        linha["Peso líquido (Kg)"]    = _get(row, "peso_kg")
-        linha["Peso bruto (Kg)"]      = _get(row, "peso_kg")
+        linha["Peso líquido (Kg)"]    = _get(row, "peso_liquido") or _get(row, "peso_kg")
+        linha["Peso bruto (Kg)"]      = _get(row, "peso_bruto") or _get(row, "peso_kg")
         linha["Altura embalagem"]     = _get(row, "altura_cm")
         linha["Largura embalagem"]    = _get(row, "largura_cm")
         linha["Comprimento embalagem"] = _get(row, "comprimento_cm")
@@ -114,9 +114,8 @@ def _montar_linha_correcao(produto_tiny: pd.Series, tipo_esperado: str) -> dict:
     linha_dict = {col: '' for col in LAYOUT_IMPORTACAO_TINY}
     
     # Normaliza o status para o formato aceito pelo Tiny
-    status_raw = produto_tiny.get('status', '')
-    status_map = {'ATIVO': 'Ativo', 'INATIVO': 'Inativo'}
-    situacao = status_map.get(str(status_raw).strip().upper(), str(status_raw) if pd.notna(status_raw) else 'Ativo')
+    status_raw = str(produto_tiny.get('status', '')).strip().upper() if pd.notna(produto_tiny.get('status', '')) else ''
+    situacao = _STATUS_TINY.get(status_raw, 'Ativo')
 
     # Limpa o codigo_pai
     codigo_pai = produto_tiny.get('codigo_pai', '')

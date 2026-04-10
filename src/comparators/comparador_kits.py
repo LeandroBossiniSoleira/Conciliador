@@ -3,7 +3,11 @@ comparador_kits.py
 Orquestra a comparação de Kits entre Magis 5 e Olist Tiny.
 """
 
+import logging
+
 import pandas as pd
+
+logger = logging.getLogger(__name__)
 
 def comparar_kits(df_magis: pd.DataFrame, df_tiny: pd.DataFrame) -> dict[str, pd.DataFrame]:
     """
@@ -23,7 +27,12 @@ def comparar_kits(df_magis: pd.DataFrame, df_tiny: pd.DataFrame) -> dict[str, pd
 
     # Prepare magis
     if not df_magis.empty:
-        df_magis['qtd_componente'] = pd.to_numeric(df_magis['qtd_componente'], errors='coerce').fillna(1)
+        qtd_raw = df_magis['qtd_componente']
+        df_magis['qtd_componente'] = pd.to_numeric(qtd_raw, errors='coerce')
+        invalidos = df_magis['qtd_componente'].isna() & qtd_raw.notna() & (qtd_raw.astype(str).str.strip() != "")
+        if invalidos.any():
+            logger.warning("comparar_kits (Magis): %d qtd_componente inválida(s) convertida(s) para 1.", invalidos.sum())
+        df_magis['qtd_componente'] = df_magis['qtd_componente'].fillna(1)
         # Sort components to make comparison stable
         df_magis_grouped = df_magis.sort_values(by=['sku_kit', 'sku_componente']).groupby('sku_kit').apply(
             lambda x: pd.Series({
@@ -38,7 +47,12 @@ def comparar_kits(df_magis: pd.DataFrame, df_tiny: pd.DataFrame) -> dict[str, pd
 
     # Prepare tiny
     if not df_tiny.empty:
-        df_tiny['qtd_componente'] = pd.to_numeric(df_tiny['qtd_componente'], errors='coerce').fillna(1)
+        qtd_raw = df_tiny['qtd_componente']
+        df_tiny['qtd_componente'] = pd.to_numeric(qtd_raw, errors='coerce')
+        invalidos = df_tiny['qtd_componente'].isna() & qtd_raw.notna() & (qtd_raw.astype(str).str.strip() != "")
+        if invalidos.any():
+            logger.warning("comparar_kits (Tiny): %d qtd_componente inválida(s) convertida(s) para 1.", invalidos.sum())
+        df_tiny['qtd_componente'] = df_tiny['qtd_componente'].fillna(1)
         df_tiny_grouped = df_tiny.sort_values(by=['sku_kit', 'sku_componente']).groupby('sku_kit').apply(
             lambda x: pd.Series({
                 'componentes': tuple(zip(x['sku_componente'].astype(str), x['qtd_componente'])),

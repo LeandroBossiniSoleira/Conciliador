@@ -1,8 +1,10 @@
+import logging
+
 import streamlit as st
 import pandas as pd
-import tempfile
-import os
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 # Configuração da página
 st.set_page_config(
@@ -288,7 +290,7 @@ def converter_dataframe(dataframe: pd.DataFrame, formato: str, sheet_name: str):
                 dataframe.to_excel(writer, index=False, sheet_name=sheet_name)
             return output.getvalue(), "application/vnd.ms-excel", ".xls"
         except Exception:
-            pass  # fallback to xlsx below
+            logger.warning("Falha ao exportar como XLS (xlwt), usando XLSX como fallback.", exc_info=True)
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
         dataframe.to_excel(writer, index=False, sheet_name=sheet_name)

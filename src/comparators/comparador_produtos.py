@@ -4,9 +4,13 @@ Orquestra os matchers e classifica cada registro de acordo
 com a presença nos dois sistemas.
 """
 
+import logging
+
 import pandas as pd
 
 from src.matchers.sku_matcher import match_por_sku
+
+logger = logging.getLogger(__name__)
 from src.matchers.ean_matcher import match_por_ean
 from src.matchers.similaridade_matcher import sugerir_matches_por_titulo
 from src.validators.fiscal_validator import validar_fiscal
@@ -156,6 +160,7 @@ def executar_comparacao(
     try:
         resultados["sugestao_match_ean"] = match_por_ean(magis, tiny)
     except Exception:
+        logger.warning("Falha no match por EAN — retornando resultado vazio.", exc_info=True)
         resultados["sugestao_match_ean"] = pd.DataFrame()
 
     # 6) Sugestão de match por título (para os sem match por SKU)
@@ -164,6 +169,7 @@ def executar_comparacao(
             somente_magis, somente_tiny, top_n=3
         )
     except Exception:
+        logger.warning("Falha no match por título — retornando resultado vazio.", exc_info=True)
         resultados["sugestao_match_titulo"] = pd.DataFrame()
 
     # 7) Validação fiscal em cada sistema original
