@@ -3,7 +3,19 @@ exportador_tiny.py
 Lida com a exportação de rotinas específicas para o Tiny.
 """
 
+import yaml
+from pathlib import Path
+
 import pandas as pd
+from src.loaders.utils import is_empty
+
+CONFIG_DIR = Path(__file__).resolve().parents[2] / "config"
+
+
+def _carregar_config_exportacao() -> dict:
+    with open(CONFIG_DIR / "regras_normalizacao.yaml", encoding="utf-8") as f:
+        regras = yaml.safe_load(f)
+    return regras.get("exportacao_tiny", {})
 
 
 # ────────────────────────────────────────────
@@ -51,9 +63,12 @@ def gerar_planilha_importacao_produtos_tiny(df_magis: pd.DataFrame) -> pd.DataFr
     -------
     pd.DataFrame com as 64 colunas do Tiny, pronto para exportar como .xlsx/.csv.
     """
+    config_exp = _carregar_config_exportacao()
+    tipo_produto_padrao = config_exp.get("tipo_produto_padrao", "P")
+
     def _get(row: pd.Series, field: str) -> str:
         val = row.get(field, "")
-        return "" if pd.isna(val) else str(val)
+        return "" if is_empty(val) else str(val)
 
     rows = []
     for _, row in df_magis.iterrows():
@@ -78,7 +93,7 @@ def gerar_planilha_importacao_produtos_tiny(df_magis: pd.DataFrame) -> pd.DataFr
         linha["Altura embalagem"]     = _get(row, "altura_cm")
         linha["Largura embalagem"]    = _get(row, "largura_cm")
         linha["Comprimento embalagem"] = _get(row, "comprimento_cm")
-        linha["Tipo do produto"]      = "P"  # produto simples
+        linha["Tipo do produto"]      = tipo_produto_padrao
 
         rows.append(linha)
 
@@ -100,7 +115,7 @@ def _tipo_correto(produto_tiny: pd.Series) -> str:
       - Se 'codigo_pai' está preenchido → é filho → tipo 'K'
     """
     codigo_pai = produto_tiny.get('codigo_pai', None)
-    if pd.isna(codigo_pai) or str(codigo_pai).strip() == '':
+    if is_empty(codigo_pai):
         return 'V'
     return 'K'
 
@@ -114,31 +129,25 @@ def _montar_linha_correcao(produto_tiny: pd.Series, tipo_esperado: str) -> dict:
     linha_dict = {col: '' for col in LAYOUT_IMPORTACAO_TINY}
     
     # Normaliza o status para o formato aceito pelo Tiny
-    status_raw = str(produto_tiny.get('status', '')).strip().upper() if pd.notna(produto_tiny.get('status', '')) else ''
+    status_raw = str(produto_tiny.get('status', '')).strip().upper() if not is_empty(produto_tiny.get('status', '')) else ''
     situacao = _STATUS_TINY.get(status_raw, 'Ativo')
 
-    # Limpa o codigo_pai
-    codigo_pai = produto_tiny.get('codigo_pai', '')
-    if pd.isna(codigo_pai):
-        codigo_pai = ''
-        
+    def _safe(val):
+        return '' if is_empty(val) else val
+
     # Preenche apenas campos necessários (nomes conforme layout real do Tiny)
-    id_produto = produto_tiny.get('id', '')
-    if pd.isna(id_produto):
-        id_produto = ''
-        
-    linha_dict['ID'] = id_produto
+    linha_dict['ID'] = _safe(produto_tiny.get('id', ''))
     linha_dict['Código (SKU)'] = produto_tiny.get('sku', '')
     linha_dict['Descrição'] = produto_tiny.get('titulo', '')
     linha_dict['Situação'] = situacao
-    linha_dict['Preço'] = produto_tiny.get('preco', '') if pd.notna(produto_tiny.get('preco', '')) else ''
-    linha_dict['Variações'] = produto_tiny.get('variacoes', '') if pd.notna(produto_tiny.get('variacoes', '')) else ''
+    linha_dict['Preço'] = _safe(produto_tiny.get('preco', ''))
+    linha_dict['Variações'] = _safe(produto_tiny.get('variacoes', ''))
     linha_dict['Tipo do produto'] = tipo_esperado
-    linha_dict['Código do pai'] = codigo_pai
-    
+    linha_dict['Código do pai'] = _safe(produto_tiny.get('codigo_pai', ''))
+
     # Conserva regra para campo "sob encomenda" se houver
     sob_encomenda = produto_tiny.get('sob_encomenda', '')
-    if pd.notna(sob_encomenda):
+    if not is_empty(sob_encomenda):
         linha_dict['Sob encomenda'] = sob_encomenda
             
     return linha_dict
@@ -206,9 +215,12 @@ def gerar_planilha_importacao_tiny(
     alertas_tipo : list[dict]
         Alertas descritivos sobre produtos com tipo incorreto.
     """
+    config_exp = _carregar_config_exportacao()
+    max_componentes = config_exp.get("max_componentes_kit", 20)
+
     rejeitados = []
     importacao_rows = []
-    
+
     if df_magis_kits_raw.empty or df_somente_magis.empty:
         return pd.DataFrame(), rejeitados, pd.DataFrame(), []
         
@@ -258,11 +270,11 @@ def gerar_planilha_importacao_tiny(
                 continue
 
         # Validação 1: Quantidade limite de itens
-        if len(gru) > 20:
+        if len(gru) > max_componentes:
             rejeitados.append({
                 'sku_kit': sku_kit,
                 'titulo_kit': titulo_kit_raw,
-                'motivo': f'Kit excede o limite do Tiny (tem {len(gru)} componentes, máximo 20).'
+                'motivo': f'Kit excede o limite do Tiny (tem {len(gru)} componentes, máximo {max_componentes}).'
             })
             continue
             

@@ -6,6 +6,7 @@ Valida campos fiscais obrigatórios (NCM, Origem, CEST, ANP).
 import pandas as pd
 import yaml
 from pathlib import Path
+from src.loaders.utils import is_empty
 
 
 CONFIG_DIR = Path(__file__).resolve().parents[2] / "config"
@@ -25,7 +26,7 @@ def validar_registro(row: pd.Series, campos_obrigatorios: list[str]) -> list[str
     erros: list[str] = []
     for campo in campos_obrigatorios:
         valor = row.get(campo)
-        if pd.isna(valor) or valor is None or str(valor).strip() == "":
+        if is_empty(valor):
             erros.append(f"SEM_{campo.upper()}")
     return erros
 

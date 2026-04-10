@@ -11,6 +11,20 @@ logger = logging.getLogger(__name__)
 CONFIG_DIR = Path(__file__).resolve().parents[2] / "config"
 
 
+def is_empty(valor) -> bool:
+    """Verifica se um valor é considerado vazio (None, NaN, ou string em branco)."""
+    if valor is None:
+        return True
+    if isinstance(valor, float) and pd.isna(valor):
+        return True
+    try:
+        if pd.isna(valor):
+            return True
+    except (TypeError, ValueError):
+        pass
+    return str(valor).strip() == ""
+
+
 def _carregar_mapa() -> dict:
     """Lê o mapeamento de colunas do YAML de configuração."""
     with open(CONFIG_DIR / "mapa_campos.yaml", encoding="utf-8") as f:

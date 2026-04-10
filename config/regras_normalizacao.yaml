@@ -35,6 +35,7 @@ similaridade:
   match_provavel: 90     # >= 90 = provável mesmo produto
   revisar: 80            # 80–89 = revisar manualmente
   ignorar: 80            # < 80  = ignorar
+  top_n: 3               # Quantidade de sugestões por produto
 
 # Campos obrigatórios para validação fiscal
 validacao_fiscal:
@@ -44,3 +45,8 @@ validacao_fiscal:
   opcionais:
     - cest
     - cod_anp
+
+# Regras de exportação para o Tiny
+exportacao_tiny:
+  tipo_produto_padrao: "P"       # P = produto simples
+  max_componentes_kit: 20        # Limite de componentes por kit no Tiny

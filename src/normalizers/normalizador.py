@@ -9,6 +9,7 @@ import pandas as pd
 import yaml
 from pathlib import Path
 from unidecode import unidecode
+from src.loaders.utils import is_empty
 
 
 CONFIG_DIR = Path(__file__).resolve().parents[2] / "config"
@@ -26,7 +27,7 @@ def _carregar_regras() -> dict:
 
 def limpar_texto(valor) -> str | None:
     """Remove acentos, espaços extras e converte para UPPER."""
-    if pd.isna(valor) or valor is None:
+    if is_empty(valor):
         return None
     valor = str(valor).strip()
     if valor == "":
@@ -40,7 +41,7 @@ def limpar_texto(valor) -> str | None:
 
 def limpar_codigo(valor) -> str | None:
     """Remove tudo que não é dígito (pontos, traços, espaços)."""
-    if pd.isna(valor) or valor is None:
+    if is_empty(valor):
         return None
     valor = re.sub(r"\D", "", str(valor))
     return valor if valor else None
@@ -51,7 +52,7 @@ def extrair_digito_origem(valor) -> str | None:
     Extrai o primeiro dígito de um campo de origem.
     Ex.: '0 - Nacional...' → '0'
     """
-    if pd.isna(valor) or valor is None:
+    if is_empty(valor):
         return None
     match = re.search(r"\d", str(valor))
     return match.group(0) if match else None
@@ -62,7 +63,7 @@ def normalizar_status(valor, sistema: str, mapa_status: dict) -> str | None:
     Converte os diferentes valores de status de cada sistema
     para um valor padronizado (ATIVO / INATIVO / EXCLUIDO).
     """
-    if pd.isna(valor) or valor is None:
+    if is_empty(valor):
         return None
     valor_str = str(valor).strip()
     mapa = mapa_status.get(sistema, {})

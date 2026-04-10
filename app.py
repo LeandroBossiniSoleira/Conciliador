@@ -833,17 +833,34 @@ def main():
                     magis_raw = carregar_magis(files_magis)
                     tiny_raw = carregar_tiny(files_tiny)
 
-                    if magis_raw.empty or tiny_raw.empty:
-                        st.error("⚠️ Uma das planilhas de produto está vazia.")
+                    if magis_raw.empty:
+                        st.error("⚠️ A planilha do **Magis** está vazia ou não pôde ser lida. Verifique o arquivo enviado.")
+                        return
+                    if tiny_raw.empty:
+                        st.error("⚠️ A planilha do **Tiny** está vazia ou não pôde ser lida. Verifique o arquivo enviado.")
                         return
 
-                    if "sku" not in magis_raw.columns:
-                        st.error("⚠️ **Erro Crítico:** A coluna `sku` não foi encontrada no Magis após o mapeamento.")
-                        return
+                    # Validação de colunas obrigatórias
+                    colunas_obrigatorias = {"sku": "SKU"}
+                    colunas_recomendadas = {"titulo": "Título/Descrição", "ncm": "NCM", "origem": "Origem"}
 
-                    if "sku" not in tiny_raw.columns:
-                        st.error("⚠️ **Erro Crítico:** A coluna `sku` não foi encontrada no Tiny após o mapeamento.")
-                        return
+                    for col, label in colunas_obrigatorias.items():
+                        if col not in magis_raw.columns:
+                            st.error(f"⚠️ **Erro Crítico:** A coluna `{label}` não foi encontrada no **Magis** após o mapeamento.")
+                            return
+                        if col not in tiny_raw.columns:
+                            st.error(f"⚠️ **Erro Crítico:** A coluna `{label}` não foi encontrada no **Tiny** após o mapeamento.")
+                            return
+
+                    avisos = []
+                    for col, label in colunas_recomendadas.items():
+                        if col not in magis_raw.columns:
+                            avisos.append(f"`{label}` ausente no Magis")
+                        if col not in tiny_raw.columns:
+                            avisos.append(f"`{label}` ausente no Tiny")
+                    if avisos:
+                        st.warning(f"⚠️ Coluna(s) recomendada(s) não encontrada(s): {', '.join(avisos)}. "
+                                   "A comparação continuará, mas alguns relatórios podem ficar incompletos.")
 
                     magis_norm = normalizar_dataframe(magis_raw, sistema="magis")
                     tiny_norm = normalizar_dataframe(tiny_raw, sistema="tiny")

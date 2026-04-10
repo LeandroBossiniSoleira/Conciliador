@@ -37,7 +37,7 @@ def similaridade(titulo1: str | None, titulo2: str | None) -> float:
 def sugerir_matches_por_titulo(
     somente_magis: pd.DataFrame,
     somente_tiny: pd.DataFrame,
-    top_n: int = 3,
+    top_n: int | None = None,
 ) -> pd.DataFrame:
     """
     Para cada produto que está SOMENTE no Magis, busca os títulos
@@ -61,6 +61,8 @@ def sugerir_matches_por_titulo(
     limiares = _carregar_limiares()
     limiar_match = limiares.get("match_provavel", 90)
     limiar_revisar = limiares.get("revisar", 80)
+    if top_n is None:
+        top_n = limiares.get("top_n", 3)
 
     # Preparar dados do Tiny (choices para o rapidfuzz)
     titulos_tiny = somente_tiny[["sku", "titulo"]].dropna(subset=["titulo"])
