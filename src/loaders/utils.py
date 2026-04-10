@@ -3,8 +3,59 @@ import logging
 import warnings
 
 import pandas as pd
+import yaml
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
+
+CONFIG_DIR = Path(__file__).resolve().parents[2] / "config"
+
+
+def _carregar_mapa() -> dict:
+    """Lê o mapeamento de colunas do YAML de configuração."""
+    with open(CONFIG_DIR / "mapa_campos.yaml", encoding="utf-8") as f:
+        return yaml.safe_load(f)
+
+
+def carregar_generico(arquivos, mapa_key: str, sistema_origem: str) -> pd.DataFrame:
+    """
+    Lê um ou mais arquivos, concatena, renomeia colunas conforme o mapa YAML
+    e marca a origem do registro.
+
+    Parameters
+    ----------
+    arquivos : str, file-like object, ou list
+        Arquivo(s) a carregar.
+    mapa_key : str
+        Chave no mapa_campos.yaml (ex: 'magis', 'tiny', 'magis_kits', 'tiny_kits').
+    sistema_origem : str
+        Valor para a coluna 'sistema_origem' (ex: 'MAGIS', 'TINY').
+
+    Returns
+    -------
+    pd.DataFrame com colunas renomeadas e coluna 'sistema_origem'.
+    """
+    mapa = _carregar_mapa()
+    colunas = mapa.get(mapa_key, {})
+
+    if not isinstance(arquivos, list):
+        arquivos = [arquivos]
+
+    dfs = []
+    for f in arquivos:
+        df_temp = ler_arquivo_robusto(f)
+        dfs.append(df_temp)
+
+    if not dfs:
+        return pd.DataFrame()
+
+    df = pd.concat(dfs, ignore_index=True)
+
+    colunas_presentes = {k: v for k, v in colunas.items() if k in df.columns}
+    df = df.rename(columns=colunas_presentes)
+
+    df["sistema_origem"] = sistema_origem
+    return df
 
 def ler_arquivo_robusto(f) -> pd.DataFrame:
     """

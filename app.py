@@ -408,6 +408,333 @@ def exibir_metricas_kits(resultados: dict[str, pd.DataFrame]):
         )
 
 
+def _renderizar_aba_produtos(resultados: dict, formato_download: str):
+    """Renderiza a aba de análise de Produtos (KPIs, métricas e 5 sub-tabs)."""
+    kpis_p = _calcular_kpis_produtos(resultados)
+    exibir_painel_saude(kpis_p, "Produtos")
+    exibir_metricas_produtos(resultados)
+
+    st.markdown("#### 📑 Detalhamento dos Produtos")
+
+    n_div   = kpis_p['div_fiscal']
+    n_dup   = kpis_p['dup_sku_m'] + kpis_p['dup_sku_t'] + kpis_p['dup_ean_m'] + kpis_p['dup_ean_t']
+    n_erros = n_div + n_dup
+    n_imp   = kpis_p['s_magis']
+    n_rev   = kpis_p['s_tiny']
+    n_match = len(resultados.get('sugestao_match_titulo', []))
+    n_ok    = kpis_p['nos_dois']
+
+    tabs = st.tabs([
+        f"✕ Erros Críticos ({n_erros})",
+        f"→ Importar no Tiny ({n_imp})",
+        f"⚠️ Revisar no Tiny ({n_rev})",
+        f"~ Sugestões de Match ({n_match})",
+        f"✅ Sincronizados ({n_ok})",
+    ])
+
+    # TAB 0 — Erros Críticos (Divergências Fiscais + Duplicidades)
+    with tabs[0]:
+        dup_sku_m = resultados.get("duplicidades_sku_magis", pd.DataFrame())
+        dup_ean_m = resultados.get("duplicidades_ean_magis", pd.DataFrame())
+        dup_sku_t = resultados.get("duplicidades_sku_tiny", pd.DataFrame())
+        dup_ean_t = resultados.get("duplicidades_ean_tiny", pd.DataFrame())
+        df_div    = resultados.get("divergencias_fiscais", pd.DataFrame())
+        total_dup = len(dup_sku_m) + len(dup_ean_m) + len(dup_sku_t) + len(dup_ean_t)
+
+        if n_erros == 0:
+            st.success("Nenhum erro crítico encontrado. Seu catálogo está pronto para sincronização.")
+        else:
+            col_msg, col_btn = st.columns([3, 1])
+            with col_msg:
+                st.error(
+                    f"**{n_erros} erro(s) crítico(s) encontrado(s)** — corrija antes de sincronizar. "
+                    f"{n_div} divergência(s) fiscal(is) · {total_dup} duplicidade(s)."
+                )
+            with col_btn:
+                df_erros = _montar_df_erros(resultados)
+                if not df_erros.empty:
+                    data_err, mime_err, ext_err = converter_dataframe(df_erros, formato_download, "Erros Críticos")
+                    st.download_button(
+                        label=f"📋 Exportar erros ({formato_download})",
+                        data=data_err,
+                        file_name=f"Erros_Criticos_Produtos{ext_err}",
+                        mime=mime_err,
+                        use_container_width=True,
+                    )
+
+        # — Divergências Fiscais —
+        st.markdown("##### Divergências Fiscais entre sistemas")
+        if df_div.empty:
+            st.success("Nenhuma divergência fiscal entre Magis e Tiny.")
+        else:
+            st.caption(
+                f"{len(df_div)} campo(s) divergente(s) (NCM, CEST, Origem, EAN tributável). "
+                "Produtos com dados fiscais diferentes podem gerar rejeição de NF."
+            )
+            st.dataframe(df_div, use_container_width=True)
+
+        st.markdown("---")
+
+        # — Duplicidades —
+        st.markdown("##### Duplicidades de SKU / EAN")
+        if total_dup == 0:
+            st.success("Nenhuma duplicidade de SKU ou EAN encontrada.")
+        else:
+            st.caption(
+                f"{total_dup} registro(s) duplicado(s). "
+                "Produtos com o mesmo SKU ou EAN causarão falha na importação."
+            )
+            colA, colB = st.columns(2)
+            with colA:
+                st.markdown("**Magis 5**")
+                if not dup_sku_m.empty:
+                    st.caption(f"SKU duplicado: {len(dup_sku_m)} registro(s)")
+                    st.dataframe(dup_sku_m, use_container_width=True)
+                if not dup_ean_m.empty:
+                    st.caption(f"EAN duplicado: {len(dup_ean_m)} registro(s)")
+                    st.dataframe(dup_ean_m, use_container_width=True)
+                if dup_sku_m.empty and dup_ean_m.empty:
+                    st.success("Sem duplicidades.")
+            with colB:
+                st.markdown("**Olist Tiny**")
+                if not dup_sku_t.empty:
+                    st.caption(f"SKU duplicado: {len(dup_sku_t)} registro(s)")
+                    st.dataframe(dup_sku_t, use_container_width=True)
+                if not dup_ean_t.empty:
+                    st.caption(f"EAN duplicado: {len(dup_ean_t)} registro(s)")
+                    st.dataframe(dup_ean_t, use_container_width=True)
+                if dup_sku_t.empty and dup_ean_t.empty:
+                    st.success("Sem duplicidades.")
+
+    # TAB 1 — Importar no Tiny
+    with tabs[1]:
+        df = resultados.get("somente_magis", pd.DataFrame())
+        if df.empty:
+            st.success("Todos os produtos ativos do Magis já estão no Tiny.")
+        else:
+            col_msg, col_btn = st.columns([3, 1])
+            with col_msg:
+                st.info(f"**{len(df)} produto(s) ativo(s) no Magis** que ainda não existem no Tiny.")
+            with col_btn:
+                magis_norm_ref = resultados.get("magis_norm", pd.DataFrame())
+                if not magis_norm_ref.empty and "sku" in df.columns:
+                    skus_importar = set(df["sku"].dropna().astype(str))
+                    df_para_importar = magis_norm_ref[
+                        magis_norm_ref["sku"].astype(str).isin(skus_importar)
+                    ]
+                    if not df_para_importar.empty:
+                        df_imp_prod = gerar_planilha_importacao_produtos_tiny(df_para_importar)
+                        data_ip, mime_ip, ext_ip = converter_dataframe(
+                            df_imp_prod, formato_download, "Importação Produtos"
+                        )
+                        st.download_button(
+                            label=f"📥 Gerar planilha Tiny ({formato_download})",
+                            data=data_ip,
+                            file_name=f"Importacao_Produtos_Tiny{ext_ip}",
+                            mime=mime_ip,
+                            use_container_width=True,
+                            type="primary",
+                        )
+            cols = ["sku", "titulo", "ean", "preco_custo", "estoque"]
+            valid_cols = [c for c in cols if c in df.columns] or \
+                         [f"{c}_magis" for c in cols if f"{c}_magis" in df.columns]
+            st.dataframe(df[valid_cols], use_container_width=True)
+            st.caption(
+                "⬆️ Use **Tiny → Cadastros → Produtos → Mais Ações → Importar produtos de uma planilha** "
+                "para importar. A planilha já está no formato aceito pelo Tiny (64 colunas)."
+            )
+
+    # TAB 2 — Revisar no Tiny
+    with tabs[2]:
+        df = resultados.get("somente_tiny", pd.DataFrame())
+        if df.empty:
+            st.success("Nenhum produto exclusivo do Tiny encontrado.")
+        else:
+            cols = ["sku", "titulo", "ean", "preco_custo", "estoque"]
+            valid_cols = [c for c in cols if c in df.columns] or \
+                         [f"{c}_tiny" for c in cols if f"{c}_tiny" in df.columns]
+
+            col_msg, col_btn = st.columns([3, 1])
+            with col_msg:
+                st.warning(
+                    f"**{len(df)} produto(s) existem apenas no Tiny** (ativos). "
+                    "Podem ser cadastros órfãos ou produtos que ainda não chegaram ao Magis."
+                )
+            with col_btn:
+                df_rev = df[valid_cols].copy() if valid_cols else df
+                data_rv, mime_rv, ext_rv = converter_dataframe(df_rev, formato_download, "Revisar Tiny")
+                st.download_button(
+                    label=f"📋 Exportar lista ({formato_download})",
+                    data=data_rv,
+                    file_name=f"Revisao_Produtos_Tiny{ext_rv}",
+                    mime=mime_rv,
+                    use_container_width=True,
+                )
+            st.dataframe(df[valid_cols], use_container_width=True)
+
+    # TAB 3 — Sugestões de Match
+    with tabs[3]:
+        df = resultados.get("sugestao_match_titulo", pd.DataFrame())
+        if df.empty:
+            st.info("Nenhuma sugestão de match por similaridade de título.")
+        else:
+            st.caption(
+                "Produtos sem match por SKU mas com títulos similares. "
+                "Confirme manualmente se são o mesmo produto com SKU diferente."
+            )
+            def color_score(val):
+                color = '#059669' if val >= 90 else '#d97706'
+                return f'color: {color}; font-weight: 600;'
+            st.dataframe(df.style.map(color_score, subset=['score']), use_container_width=True)
+
+    # TAB 4 — Sincronizados (OK)
+    with tabs[4]:
+        df = resultados.get("presente_nos_dois", pd.DataFrame())
+        if df.empty:
+            st.info("Nenhum produto sincronizado entre os dois sistemas.")
+        else:
+            st.success(f"**{len(df)} produto(s)** presentes nos dois sistemas. Nenhuma ação necessária.")
+            cols = ["sku", "titulo_magis", "status_magis", "status_tiny"]
+            valid_cols = [c for c in cols if c in df.columns]
+            if not valid_cols:
+                valid_cols = [c for c in df.columns if c not in ("_merge", "classificacao")][:6]
+            st.dataframe(df[valid_cols], use_container_width=True)
+
+
+def _renderizar_aba_kits(resultados: dict, formato_download: str):
+    """Renderiza a aba de análise de Kits (KPIs, métricas e 4 sub-tabs)."""
+    kpis_k = _calcular_kpis_kits(resultados)
+    exibir_painel_saude(kpis_k, "Kits")
+    exibir_metricas_kits(resultados)
+
+    st.markdown("#### 📑 Detalhamento dos Kits")
+
+    n_div_k = kpis_k['divergentes']
+    n_imp_k = kpis_k['s_magis']
+    n_rev_k = kpis_k['s_tiny']
+    n_ok_k  = kpis_k['nos_dois']
+
+    tabs_k = st.tabs([
+        f"✕ Composição Divergente ({n_div_k})",
+        f"→ Importar no Tiny ({n_imp_k})",
+        f"⚠️ Revisar no Tiny ({n_rev_k})",
+        f"✅ Sincronizados ({n_ok_k})",
+    ])
+
+    # TAB 0 — Composição Divergente
+    with tabs_k[0]:
+        df = resultados.get("kits_divergentes", pd.DataFrame())
+        if df.empty:
+            st.success("Nenhum kit com composição divergente entre os sistemas.")
+        else:
+            st.error(
+                f"**{len(df)} kit(s)** presentes nos dois sistemas mas com componentes ou "
+                "quantidades diferentes. Corrija a composição antes de sincronizar."
+            )
+            st.dataframe(df, use_container_width=True)
+
+    # TAB 1 — Importar no Tiny
+    with tabs_k[1]:
+        df = resultados.get("kits_somente_magis", pd.DataFrame())
+
+        df_desconhecido = resultados.get("kits_somente_magis_desconhecido", pd.DataFrame())
+        if not df_desconhecido.empty:
+            st.warning(
+                f"⚠️ {len(df_desconhecido)} kit(s) com status **desconhecido** foram separados abaixo. "
+                "Para classificá-los corretamente, carregue também a planilha de Produtos do Magis."
+            )
+            with st.expander(f"Ver {len(df_desconhecido)} kit(s) com status desconhecido"):
+                st.dataframe(df_desconhecido, use_container_width=True)
+
+        if df.empty:
+            st.success("Todos os kits ativos do Magis já estão no Tiny.")
+        else:
+            st.info(f"**{len(df)} kit(s) ativo(s) no Magis** que precisam ser importados no Tiny.")
+            st.dataframe(df, use_container_width=True)
+
+        # ── Alerta de Tipo de Produto incorreto ──
+        alertas_tipo = resultados.get("alertas_tipo", [])
+        df_correcao  = resultados.get("df_correcao_tipos", pd.DataFrame())
+
+        if alertas_tipo:
+            st.markdown("---")
+            st.error(
+                f"🚨 **{len(alertas_tipo)} produto(s) com tipo incorreto no Tiny.** "
+                "Esses SKUs precisam ser do tipo **K** (Kit). "
+                "Importe a planilha de correção **antes** de importar os Kits."
+            )
+            df_alertas_display = pd.DataFrame(alertas_tipo).rename(columns={
+                'sku': 'SKU', 'titulo': 'Descrição',
+                'tipo_atual': 'Tipo Atual', 'tipo_esperado': 'Tipo Correto',
+            })
+            st.dataframe(df_alertas_display, use_container_width=True)
+            if not df_correcao.empty:
+                data_cor, mime_cor, ext_cor = converter_dataframe(df_correcao, formato_download, 'Correção Tipos')
+                st.download_button(
+                    label=f"🔧 Baixar Planilha de Correção ({formato_download})",
+                    data=data_cor,
+                    file_name=f"Correcao_Tipos_Produto_Tiny{ext_cor}",
+                    mime=mime_cor,
+                    use_container_width=True,
+                    type="primary",
+                )
+                st.caption(
+                    "⬆️ Importe em **Tiny → Cadastros → Produtos → Mais Ações → Importar produtos** "
+                    "para corrigir o tipo. Depois processe os Kits novamente."
+                )
+            st.markdown("---")
+
+        # ── Planilha de importação de Kits ──
+        df_import_tiny = resultados.get("df_import_tiny_kits", pd.DataFrame())
+        if not df_import_tiny.empty:
+            data_imp, mime_imp, ext_imp = converter_dataframe(df_import_tiny, formato_download, 'Importação Kits')
+            st.download_button(
+                label=f"📥 Baixar Planilha de Importação Tiny ({formato_download})",
+                data=data_imp,
+                file_name=f"Importacao_Kits_Tiny{ext_imp}",
+                mime=mime_imp,
+                use_container_width=True,
+                type="secondary",
+            )
+        rejeitados = resultados.get("kits_rejeitados_importacao", [])
+        if rejeitados:
+            st.warning(f"⚠️ {len(rejeitados)} kit(s) não podem ser exportados devido a regras do Olist.")
+            with st.expander("Ver motivos de rejeição"):
+                st.dataframe(pd.DataFrame(rejeitados), use_container_width=True)
+
+    # TAB 2 — Revisar no Tiny
+    with tabs_k[2]:
+        df = resultados.get("kits_somente_tiny", pd.DataFrame())
+        if df.empty:
+            st.success("Nenhum kit exclusivo do Tiny encontrado.")
+        else:
+            col_msg, col_btn = st.columns([3, 1])
+            with col_msg:
+                st.warning(
+                    f"**{len(df)} kit(s) existem apenas no Tiny** (ativos). "
+                    "Verifique se são cadastros válidos ou órfãos."
+                )
+            with col_btn:
+                data_rk, mime_rk, ext_rk = converter_dataframe(df, formato_download, "Revisar Kits Tiny")
+                st.download_button(
+                    label=f"📋 Exportar lista ({formato_download})",
+                    data=data_rk,
+                    file_name=f"Revisao_Kits_Tiny{ext_rk}",
+                    mime=mime_rk,
+                    use_container_width=True,
+                )
+            st.dataframe(df, use_container_width=True)
+
+    # TAB 3 — Sincronizados (OK)
+    with tabs_k[3]:
+        df = resultados.get("kits_nos_dois", pd.DataFrame())
+        if df.empty:
+            st.info("Nenhum kit sincronizado entre os dois sistemas.")
+        else:
+            st.success(f"**{len(df)} kit(s)** com composição idêntica nos dois sistemas. Nenhuma ação necessária.")
+            st.dataframe(df, use_container_width=True)
+
+
 def main():
     # Cabeçalho
     st.markdown("<h1><span style='color:#2563eb;'>🔄 Comparador de Catálogo</span> Magis × Tiny</h1>", unsafe_allow_html=True)
@@ -585,7 +912,7 @@ def main():
 
     # Sucesso
     st.toast("Análise finalizada com sucesso!", icon="✅")
-    
+
     # Exibições de UI — montar abas conforme o que foi enviado
     if tem_produtos and tem_kits:
         aba_produtos, aba_kits = st.tabs(["🛒 Análise de Produtos", "📦 Análise de Kits"])
@@ -594,345 +921,27 @@ def main():
     else:
         aba_kits = st.container()
 
-    # -- ABA DE PRODUTOS --
     if tem_produtos:
         with aba_produtos:
-            kpis_p = _calcular_kpis_produtos(resultados)
-            exibir_painel_saude(kpis_p, "Produtos")
-            exibir_metricas_produtos(resultados)
+            _renderizar_aba_produtos(resultados, formato_download)
 
-            st.markdown("#### 📑 Detalhamento dos Produtos")
-
-            n_div   = kpis_p['div_fiscal']
-            n_dup   = kpis_p['dup_sku_m'] + kpis_p['dup_sku_t'] + kpis_p['dup_ean_m'] + kpis_p['dup_ean_t']
-            n_erros = n_div + n_dup
-            n_imp   = kpis_p['s_magis']
-            n_rev   = kpis_p['s_tiny']
-            n_match = len(resultados.get('sugestao_match_titulo', []))
-            n_ok    = kpis_p['nos_dois']
-
-            tabs = st.tabs([
-                f"✕ Erros Críticos ({n_erros})",
-                f"→ Importar no Tiny ({n_imp})",
-                f"⚠️ Revisar no Tiny ({n_rev})",
-                f"~ Sugestões de Match ({n_match})",
-                f"✅ Sincronizados ({n_ok})",
-            ])
-
-            # TAB 0 — Erros Críticos (Divergências Fiscais + Duplicidades)
-            with tabs[0]:
-                dup_sku_m = resultados.get("duplicidades_sku_magis", pd.DataFrame())
-                dup_ean_m = resultados.get("duplicidades_ean_magis", pd.DataFrame())
-                dup_sku_t = resultados.get("duplicidades_sku_tiny", pd.DataFrame())
-                dup_ean_t = resultados.get("duplicidades_ean_tiny", pd.DataFrame())
-                df_div    = resultados.get("divergencias_fiscais", pd.DataFrame())
-                total_dup = len(dup_sku_m) + len(dup_ean_m) + len(dup_sku_t) + len(dup_ean_t)
-
-                if n_erros == 0:
-                    st.success("Nenhum erro crítico encontrado. Seu catálogo está pronto para sincronização.")
-                else:
-                    col_msg, col_btn = st.columns([3, 1])
-                    with col_msg:
-                        st.error(
-                            f"**{n_erros} erro(s) crítico(s) encontrado(s)** — corrija antes de sincronizar. "
-                            f"{n_div} divergência(s) fiscal(is) · {total_dup} duplicidade(s)."
-                        )
-                    with col_btn:
-                        df_erros = _montar_df_erros(resultados)
-                        if not df_erros.empty:
-                            data_err, mime_err, ext_err = converter_dataframe(df_erros, formato_download, "Erros Críticos")
-                            st.download_button(
-                                label=f"📋 Exportar erros ({formato_download})",
-                                data=data_err,
-                                file_name=f"Erros_Criticos_Produtos{ext_err}",
-                                mime=mime_err,
-                                use_container_width=True,
-                            )
-
-                # — Divergências Fiscais —
-                st.markdown("##### Divergências Fiscais entre sistemas")
-                if df_div.empty:
-                    st.success("Nenhuma divergência fiscal entre Magis e Tiny.")
-                else:
-                    st.caption(
-                        f"{len(df_div)} campo(s) divergente(s) (NCM, CEST, Origem, EAN tributável). "
-                        "Produtos com dados fiscais diferentes podem gerar rejeição de NF."
-                    )
-                    st.dataframe(df_div, use_container_width=True)
-
-                st.markdown("---")
-
-                # — Duplicidades —
-                st.markdown("##### Duplicidades de SKU / EAN")
-                if total_dup == 0:
-                    st.success("Nenhuma duplicidade de SKU ou EAN encontrada.")
-                else:
-                    st.caption(
-                        f"{total_dup} registro(s) duplicado(s). "
-                        "Produtos com o mesmo SKU ou EAN causarão falha na importação."
-                    )
-                    colA, colB = st.columns(2)
-                    with colA:
-                        st.markdown("**Magis 5**")
-                        if not dup_sku_m.empty:
-                            st.caption(f"SKU duplicado: {len(dup_sku_m)} registro(s)")
-                            st.dataframe(dup_sku_m, use_container_width=True)
-                        if not dup_ean_m.empty:
-                            st.caption(f"EAN duplicado: {len(dup_ean_m)} registro(s)")
-                            st.dataframe(dup_ean_m, use_container_width=True)
-                        if dup_sku_m.empty and dup_ean_m.empty:
-                            st.success("Sem duplicidades.")
-                    with colB:
-                        st.markdown("**Olist Tiny**")
-                        if not dup_sku_t.empty:
-                            st.caption(f"SKU duplicado: {len(dup_sku_t)} registro(s)")
-                            st.dataframe(dup_sku_t, use_container_width=True)
-                        if not dup_ean_t.empty:
-                            st.caption(f"EAN duplicado: {len(dup_ean_t)} registro(s)")
-                            st.dataframe(dup_ean_t, use_container_width=True)
-                        if dup_sku_t.empty and dup_ean_t.empty:
-                            st.success("Sem duplicidades.")
-
-            # TAB 1 — Importar no Tiny
-            with tabs[1]:
-                df = resultados.get("somente_magis", pd.DataFrame())
-                if df.empty:
-                    st.success("Todos os produtos ativos do Magis já estão no Tiny.")
-                else:
-                    col_msg, col_btn = st.columns([3, 1])
-                    with col_msg:
-                        st.info(f"**{len(df)} produto(s) ativo(s) no Magis** que ainda não existem no Tiny.")
-                    with col_btn:
-                        magis_norm_ref = resultados.get("magis_norm", pd.DataFrame())
-                        if not magis_norm_ref.empty and "sku" in df.columns:
-                            skus_importar = set(df["sku"].dropna().astype(str))
-                            df_para_importar = magis_norm_ref[
-                                magis_norm_ref["sku"].astype(str).isin(skus_importar)
-                            ]
-                            if not df_para_importar.empty:
-                                df_imp_prod = gerar_planilha_importacao_produtos_tiny(df_para_importar)
-                                data_ip, mime_ip, ext_ip = converter_dataframe(
-                                    df_imp_prod, formato_download, "Importação Produtos"
-                                )
-                                st.download_button(
-                                    label=f"📥 Gerar planilha Tiny ({formato_download})",
-                                    data=data_ip,
-                                    file_name=f"Importacao_Produtos_Tiny{ext_ip}",
-                                    mime=mime_ip,
-                                    use_container_width=True,
-                                    type="primary",
-                                )
-                    cols = ["sku", "titulo", "ean", "preco_custo", "estoque"]
-                    valid_cols = [c for c in cols if c in df.columns] or \
-                                 [f"{c}_magis" for c in cols if f"{c}_magis" in df.columns]
-                    st.dataframe(df[valid_cols], use_container_width=True)
-                    st.caption(
-                        "⬆️ Use **Tiny → Cadastros → Produtos → Mais Ações → Importar produtos de uma planilha** "
-                        "para importar. A planilha já está no formato aceito pelo Tiny (64 colunas)."
-                    )
-
-            # TAB 2 — Revisar no Tiny
-            with tabs[2]:
-                df = resultados.get("somente_tiny", pd.DataFrame())
-                if df.empty:
-                    st.success("Nenhum produto exclusivo do Tiny encontrado.")
-                else:
-                    cols = ["sku", "titulo", "ean", "preco_custo", "estoque"]
-                    valid_cols = [c for c in cols if c in df.columns] or \
-                                 [f"{c}_tiny" for c in cols if f"{c}_tiny" in df.columns]
-
-                    col_msg, col_btn = st.columns([3, 1])
-                    with col_msg:
-                        st.warning(
-                            f"**{len(df)} produto(s) existem apenas no Tiny** (ativos). "
-                            "Podem ser cadastros órfãos ou produtos que ainda não chegaram ao Magis."
-                        )
-                    with col_btn:
-                        df_rev = df[valid_cols].copy() if valid_cols else df
-                        data_rv, mime_rv, ext_rv = converter_dataframe(df_rev, formato_download, "Revisar Tiny")
-                        st.download_button(
-                            label=f"📋 Exportar lista ({formato_download})",
-                            data=data_rv,
-                            file_name=f"Revisao_Produtos_Tiny{ext_rv}",
-                            mime=mime_rv,
-                            use_container_width=True,
-                        )
-                    st.dataframe(df[valid_cols], use_container_width=True)
-
-            # TAB 3 — Sugestões de Match
-            with tabs[3]:
-                df = resultados.get("sugestao_match_titulo", pd.DataFrame())
-                if df.empty:
-                    st.info("Nenhuma sugestão de match por similaridade de título.")
-                else:
-                    st.caption(
-                        "Produtos sem match por SKU mas com títulos similares. "
-                        "Confirme manualmente se são o mesmo produto com SKU diferente."
-                    )
-                    def color_score(val):
-                        color = '#059669' if val >= 90 else '#d97706'
-                        return f'color: {color}; font-weight: 600;'
-                    st.dataframe(df.style.map(color_score, subset=['score']), use_container_width=True)
-
-            # TAB 4 — Sincronizados (OK)
-            with tabs[4]:
-                df = resultados.get("presente_nos_dois", pd.DataFrame())
-                if df.empty:
-                    st.info("Nenhum produto sincronizado entre os dois sistemas.")
-                else:
-                    st.success(f"**{len(df)} produto(s)** presentes nos dois sistemas. Nenhuma ação necessária.")
-                    cols = ["sku", "titulo_magis", "status_magis", "status_tiny"]
-                    valid_cols = [c for c in cols if c in df.columns]
-                    if not valid_cols:
-                        valid_cols = [c for c in df.columns if c not in ("_merge", "classificacao")][:6]
-                    st.dataframe(df[valid_cols], use_container_width=True)
-
-    # -- ABA DE KITS --
     if tem_kits:
         with aba_kits:
-            kpis_k = _calcular_kpis_kits(resultados)
-            exibir_painel_saude(kpis_k, "Kits")
-            exibir_metricas_kits(resultados)
-
-            st.markdown("#### 📑 Detalhamento dos Kits")
-
-            n_div_k = kpis_k['divergentes']
-            n_imp_k = kpis_k['s_magis']
-            n_rev_k = kpis_k['s_tiny']
-            n_ok_k  = kpis_k['nos_dois']
-
-            tabs_k = st.tabs([
-                f"✕ Composição Divergente ({n_div_k})",
-                f"→ Importar no Tiny ({n_imp_k})",
-                f"⚠️ Revisar no Tiny ({n_rev_k})",
-                f"✅ Sincronizados ({n_ok_k})",
-            ])
-
-            # TAB 0 — Composição Divergente
-            with tabs_k[0]:
-                df = resultados.get("kits_divergentes", pd.DataFrame())
-                if df.empty:
-                    st.success("Nenhum kit com composição divergente entre os sistemas.")
-                else:
-                    st.error(
-                        f"**{len(df)} kit(s)** presentes nos dois sistemas mas com componentes ou "
-                        "quantidades diferentes. Corrija a composição antes de sincronizar."
-                    )
-                    st.dataframe(df, use_container_width=True)
-
-            # TAB 1 — Importar no Tiny
-            with tabs_k[1]:
-                df = resultados.get("kits_somente_magis", pd.DataFrame())
-
-                df_desconhecido = resultados.get("kits_somente_magis_desconhecido", pd.DataFrame())
-                if not df_desconhecido.empty:
-                    st.warning(
-                        f"⚠️ {len(df_desconhecido)} kit(s) com status **desconhecido** foram separados abaixo. "
-                        "Para classificá-los corretamente, carregue também a planilha de Produtos do Magis."
-                    )
-                    with st.expander(f"Ver {len(df_desconhecido)} kit(s) com status desconhecido"):
-                        st.dataframe(df_desconhecido, use_container_width=True)
-
-                if df.empty:
-                    st.success("Todos os kits ativos do Magis já estão no Tiny.")
-                else:
-                    st.info(f"**{len(df)} kit(s) ativo(s) no Magis** que precisam ser importados no Tiny.")
-                    st.dataframe(df, use_container_width=True)
-
-                # ── Alerta de Tipo de Produto incorreto ──
-                alertas_tipo = resultados.get("alertas_tipo", [])
-                df_correcao  = resultados.get("df_correcao_tipos", pd.DataFrame())
-
-                if alertas_tipo:
-                    st.markdown("---")
-                    st.error(
-                        f"🚨 **{len(alertas_tipo)} produto(s) com tipo incorreto no Tiny.** "
-                        "Esses SKUs precisam ser do tipo **K** (Kit). "
-                        "Importe a planilha de correção **antes** de importar os Kits."
-                    )
-                    df_alertas_display = pd.DataFrame(alertas_tipo).rename(columns={
-                        'sku': 'SKU', 'titulo': 'Descrição',
-                        'tipo_atual': 'Tipo Atual', 'tipo_esperado': 'Tipo Correto',
-                    })
-                    st.dataframe(df_alertas_display, use_container_width=True)
-                    if not df_correcao.empty:
-                        data_cor, mime_cor, ext_cor = converter_dataframe(df_correcao, formato_download, 'Correção Tipos')
-                        st.download_button(
-                            label=f"🔧 Baixar Planilha de Correção ({formato_download})",
-                            data=data_cor,
-                            file_name=f"Correcao_Tipos_Produto_Tiny{ext_cor}",
-                            mime=mime_cor,
-                            use_container_width=True,
-                            type="primary",
-                        )
-                        st.caption(
-                            "⬆️ Importe em **Tiny → Cadastros → Produtos → Mais Ações → Importar produtos** "
-                            "para corrigir o tipo. Depois processe os Kits novamente."
-                        )
-                    st.markdown("---")
-
-                # ── Planilha de importação de Kits ──
-                df_import_tiny = resultados.get("df_import_tiny_kits", pd.DataFrame())
-                if not df_import_tiny.empty:
-                    data_imp, mime_imp, ext_imp = converter_dataframe(df_import_tiny, formato_download, 'Importação Kits')
-                    st.download_button(
-                        label=f"📥 Baixar Planilha de Importação Tiny ({formato_download})",
-                        data=data_imp,
-                        file_name=f"Importacao_Kits_Tiny{ext_imp}",
-                        mime=mime_imp,
-                        use_container_width=True,
-                        type="secondary",
-                    )
-                rejeitados = resultados.get("kits_rejeitados_importacao", [])
-                if rejeitados:
-                    st.warning(f"⚠️ {len(rejeitados)} kit(s) não podem ser exportados devido a regras do Olist.")
-                    with st.expander("Ver motivos de rejeição"):
-                        st.dataframe(pd.DataFrame(rejeitados), use_container_width=True)
-
-            # TAB 2 — Revisar no Tiny
-            with tabs_k[2]:
-                df = resultados.get("kits_somente_tiny", pd.DataFrame())
-                if df.empty:
-                    st.success("Nenhum kit exclusivo do Tiny encontrado.")
-                else:
-                    col_msg, col_btn = st.columns([3, 1])
-                    with col_msg:
-                        st.warning(
-                            f"**{len(df)} kit(s) existem apenas no Tiny** (ativos). "
-                            "Verifique se são cadastros válidos ou órfãos."
-                        )
-                    with col_btn:
-                        data_rk, mime_rk, ext_rk = converter_dataframe(df, formato_download, "Revisar Kits Tiny")
-                        st.download_button(
-                            label=f"📋 Exportar lista ({formato_download})",
-                            data=data_rk,
-                            file_name=f"Revisao_Kits_Tiny{ext_rk}",
-                            mime=mime_rk,
-                            use_container_width=True,
-                        )
-                    st.dataframe(df, use_container_width=True)
-
-            # TAB 3 — Sincronizados (OK)
-            with tabs_k[3]:
-                df = resultados.get("kits_nos_dois", pd.DataFrame())
-                if df.empty:
-                    st.info("Nenhum kit sincronizado entre os dois sistemas.")
-                else:
-                    st.success(f"**{len(df)} kit(s)** com composição idêntica nos dois sistemas. Nenhuma ação necessária.")
-                    st.dataframe(df, use_container_width=True)
+            _renderizar_aba_kits(resultados, formato_download)
 
     st.markdown("---")
-    
-    # Botão de download gigante
+
+    # Botão de download do relatório consolidado
     with open(caminho_excel, "rb") as file:
-        st.download_button(
-            label="📥 Exportar Relatório Consolidado (Excel)",
-            data=file,
-            file_name="Diagnostico_Catalogo_Magis_Tiny.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            type="primary",
-            use_container_width=True
-        )
+        file_data = file.read()
+    st.download_button(
+        label="📥 Exportar Relatório Consolidado (Excel)",
+        data=file_data,
+        file_name="Diagnostico_Catalogo_Magis_Tiny.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        type="primary",
+        use_container_width=True
+    )
 
 if __name__ == "__main__":
     main()

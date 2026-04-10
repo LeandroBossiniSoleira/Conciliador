@@ -6,17 +6,10 @@ Carrega planilhas de Kits do Magis e do Tiny, com suporte a múltiplos arquivos,
 import logging
 
 import pandas as pd
-import yaml
-from pathlib import Path
-from src.loaders.utils import ler_arquivo_robusto
+from src.loaders.utils import carregar_generico
 
 logger = logging.getLogger(__name__)
 
-CONFIG_DIR = Path(__file__).resolve().parents[2] / "config"
-
-def _carregar_mapa() -> dict:
-    with open(CONFIG_DIR / "mapa_campos.yaml", encoding="utf-8") as f:
-        return yaml.safe_load(f)
 
 def enriquecer_status_kits(df_kits: pd.DataFrame, df_produtos: pd.DataFrame | None) -> pd.DataFrame:
     """
@@ -54,74 +47,29 @@ def enriquecer_status_kits(df_kits: pd.DataFrame, df_produtos: pd.DataFrame | No
     return df
 
 
-def carregar_kits_magis(arquivos) -> pd.DataFrame:
-    mapa = _carregar_mapa()
-    colunas = mapa.get("magis_kits", {})
-    
-    if not isinstance(arquivos, list):
-        arquivos = [arquivos]
-        
-    dfs = []
-    for f in arquivos:
-        df_temp = ler_arquivo_robusto(f)
-        dfs.append(df_temp)
-        
-    if not dfs:
-        return pd.DataFrame()
-        
-    df = pd.concat(dfs, ignore_index=True)
-    
-    colunas_presentes = {k: v for k, v in colunas.items() if k in df.columns}
-    df = df.rename(columns=colunas_presentes)
-    
-    # Clean up quantities
-    if "qtd_componente" in df.columns:
-        qtd_raw = df["qtd_componente"]
-        df["qtd_componente"] = pd.to_numeric(qtd_raw, errors="coerce")
-        invalidos = df["qtd_componente"].isna() & qtd_raw.notna() & (qtd_raw.astype(str).str.strip() != "")
-        if invalidos.any():
-            valores = qtd_raw[invalidos].unique().tolist()
-            logger.warning(
-                "Kits Magis: %d registro(s) com qtd_componente inválida convertida para 1. Valores: %s",
-                invalidos.sum(), valores,
-            )
-        df["qtd_componente"] = df["qtd_componente"].fillna(1)
+def _validar_qtd_componente(df: pd.DataFrame, label: str) -> pd.DataFrame:
+    """Converte qtd_componente para numérico com logging de valores inválidos."""
+    if "qtd_componente" not in df.columns:
+        return df
 
-    df["sistema_origem"] = "MAGIS_KITS"
+    qtd_raw = df["qtd_componente"]
+    df["qtd_componente"] = pd.to_numeric(qtd_raw, errors="coerce")
+    invalidos = df["qtd_componente"].isna() & qtd_raw.notna() & (qtd_raw.astype(str).str.strip() != "")
+    if invalidos.any():
+        valores = qtd_raw[invalidos].unique().tolist()
+        logger.warning(
+            "Kits %s: %d registro(s) com qtd_componente inválida convertida para 1. Valores: %s",
+            label, invalidos.sum(), valores,
+        )
+    df["qtd_componente"] = df["qtd_componente"].fillna(1)
     return df
+
+
+def carregar_kits_magis(arquivos) -> pd.DataFrame:
+    df = carregar_generico(arquivos, mapa_key="magis_kits", sistema_origem="MAGIS_KITS")
+    return _validar_qtd_componente(df, "Magis")
+
 
 def carregar_kits_tiny(arquivos) -> pd.DataFrame:
-    mapa = _carregar_mapa()
-    colunas = mapa.get("tiny_kits", {})
-
-    if not isinstance(arquivos, list):
-        arquivos = [arquivos]
-
-    dfs = []
-    for f in arquivos:
-        df_temp = ler_arquivo_robusto(f)
-        dfs.append(df_temp)
-
-    if not dfs:
-        return pd.DataFrame()
-
-    df = pd.concat(dfs, ignore_index=True)
-
-    colunas_presentes = {k: v for k, v in colunas.items() if k in df.columns}
-    df = df.rename(columns=colunas_presentes)
-
-    # Clean up quantities
-    if "qtd_componente" in df.columns:
-        qtd_raw = df["qtd_componente"]
-        df["qtd_componente"] = pd.to_numeric(qtd_raw, errors="coerce")
-        invalidos = df["qtd_componente"].isna() & qtd_raw.notna() & (qtd_raw.astype(str).str.strip() != "")
-        if invalidos.any():
-            valores = qtd_raw[invalidos].unique().tolist()
-            logger.warning(
-                "Kits Tiny: %d registro(s) com qtd_componente inválida convertida para 1. Valores: %s",
-                invalidos.sum(), valores,
-            )
-        df["qtd_componente"] = df["qtd_componente"].fillna(1)
-
-    df["sistema_origem"] = "TINY_KITS"
-    return df
+    df = carregar_generico(arquivos, mapa_key="tiny_kits", sistema_origem="TINY_KITS")
+    return _validar_qtd_componente(df, "Tiny")
