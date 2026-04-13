@@ -46,7 +46,7 @@ class TestValidarFiscal:
             "origem": ["0"],
         })
         resultado = validar_fiscal(df)
-        assert resultado["tem_erro_fiscal"].iloc[0] is True
+        assert resultado["tem_erro_fiscal"].iloc[0] == True
 
 
 class TestVerificarDuplicidade:

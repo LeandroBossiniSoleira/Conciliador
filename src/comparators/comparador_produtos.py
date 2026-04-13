@@ -7,21 +7,33 @@ com a presença nos dois sistemas.
 import logging
 
 import pandas as pd
+import yaml
+from pathlib import Path
 
 from src.matchers.sku_matcher import match_por_sku
-
-logger = logging.getLogger(__name__)
 from src.matchers.ean_matcher import match_por_ean
 from src.matchers.similaridade_matcher import sugerir_matches_por_titulo
 from src.validators.fiscal_validator import validar_fiscal
 from src.validators.duplicidades import relatorio_duplicidades
 
+logger = logging.getLogger(__name__)
+
+CONFIG_DIR = Path(__file__).resolve().parents[2] / "config"
+
+
+def _carregar_regras() -> dict:
+    with open(CONFIG_DIR / "regras_normalizacao.yaml", encoding="utf-8") as f:
+        return yaml.safe_load(f)
+
+
+_REGRAS = _carregar_regras()
 
 # ────────────────────────────────────────────
 # Status
 # ────────────────────────────────────────────
 
-_STATUSES_INATIVOS = {"INATIVO", "EXCLUIDO"}
+_STATUSES_INATIVOS = set(_REGRAS.get("statuses_inativos", ["INATIVO", "EXCLUIDO"]))
+_CLASSIFICACAO = _REGRAS.get("classificacao", {})
 
 
 def _separar_por_status(
@@ -47,12 +59,12 @@ def classificar(row: pd.Series) -> str:
     """Classifica o registro de acordo com o resultado do merge."""
     merge = row.get("_merge", "")
     if merge == "left_only":
-        return "SOMENTE_MAGIS"
+        return _CLASSIFICACAO.get("somente_magis", "SOMENTE_MAGIS")
     if merge == "right_only":
-        return "SOMENTE_TINY"
+        return _CLASSIFICACAO.get("somente_tiny", "SOMENTE_TINY")
     if merge == "both":
-        return "PRESENTE_NOS_DOIS"
-    return "ERRO"
+        return _CLASSIFICACAO.get("presente_nos_dois", "PRESENTE_NOS_DOIS")
+    return _CLASSIFICACAO.get("erro", "ERRO")
 
 
 # ────────────────────────────────────────────

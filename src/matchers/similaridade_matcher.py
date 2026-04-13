@@ -17,10 +17,13 @@ logger = logging.getLogger(__name__)
 CONFIG_DIR = Path(__file__).resolve().parents[2] / "config"
 
 
-def _carregar_limiares() -> dict:
+def _carregar_regras() -> dict:
     with open(CONFIG_DIR / "regras_normalizacao.yaml", encoding="utf-8") as f:
-        regras = yaml.safe_load(f)
-    return regras.get("similaridade", {})
+        return yaml.safe_load(f)
+
+
+def _carregar_limiares() -> dict:
+    return _carregar_regras().get("similaridade", {})
 
 
 def similaridade(titulo1: str | None, titulo2: str | None) -> float:
@@ -109,8 +112,11 @@ def sugerir_matches_por_titulo(
     df = pd.DataFrame(resultados)
 
     if not df.empty:
+        rotulos = _carregar_regras().get("rotulos_similaridade", {})
+        label_match = rotulos.get("match_provavel", "MATCH_PROVAVEL")
+        label_revisar = rotulos.get("revisar", "REVISAR")
         df["classificacao"] = df["score"].apply(
-            lambda s: "MATCH_PROVAVEL" if s >= limiar_match else "REVISAR"
+            lambda s: label_match if s >= limiar_match else label_revisar
         )
 
     return df

@@ -4,10 +4,23 @@ Orquestra a comparação de Kits entre Magis 5 e Olist Tiny.
 """
 
 import logging
+from pathlib import Path
 
 import pandas as pd
+import yaml
 
 logger = logging.getLogger(__name__)
+
+CONFIG_DIR = Path(__file__).resolve().parents[2] / "config"
+
+
+def _carregar_regras() -> dict:
+    with open(CONFIG_DIR / "regras_normalizacao.yaml", encoding="utf-8") as f:
+        return yaml.safe_load(f)
+
+
+_REGRAS = _carregar_regras()
+_STATUSES_INATIVOS = set(_REGRAS.get("statuses_inativos", ["INATIVO", "EXCLUIDO"]))
 
 def comparar_kits(df_magis: pd.DataFrame, df_tiny: pd.DataFrame) -> dict[str, pd.DataFrame]:
     """
@@ -81,7 +94,7 @@ def comparar_kits(df_magis: pd.DataFrame, df_tiny: pd.DataFrame) -> dict[str, pd
     somente_magis_desconhecido = pd.DataFrame()
     if 'status_kit' in somente_magis.columns:
         status_upper = somente_magis['status_kit'].fillna('').str.upper()
-        somente_magis_inativos     = somente_magis[status_upper.isin({'INATIVO', 'EXCLUIDO'})].copy()
+        somente_magis_inativos     = somente_magis[status_upper.isin(_STATUSES_INATIVOS)].copy()
         somente_magis_desconhecido = somente_magis[status_upper == 'DESCONHECIDO'].copy()
         somente_magis              = somente_magis[status_upper == 'ATIVO'].copy()
 

@@ -46,6 +46,29 @@ validacao_fiscal:
     - cest
     - cod_anp
 
+# Status considerados inativos para fins de filtro/classificação
+statuses_inativos:
+  - "INATIVO"
+  - "EXCLUIDO"
+
+# Rótulos de classificação do comparador
+classificacao:
+  somente_magis: "SOMENTE_MAGIS"
+  somente_tiny: "SOMENTE_TINY"
+  presente_nos_dois: "PRESENTE_NOS_DOIS"
+  erro: "ERRO"
+
+# Rótulos do matcher de similaridade
+rotulos_similaridade:
+  match_provavel: "MATCH_PROVAVEL"
+  revisar: "REVISAR"
+
+# Mapeamento de status interno → formato de exibição do Tiny
+mapa_status_tiny:
+  "ATIVO": "Ativo"
+  "INATIVO": "Inativo"
+  "EXCLUIDO": "Inativo"
+
 # Regras de exportação para o Tiny
 exportacao_tiny:
   tipo_produto_padrao: "P"       # P = produto simples

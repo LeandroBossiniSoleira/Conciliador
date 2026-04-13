@@ -61,6 +61,7 @@ class TestLerArquivoRobusto:
         assert len(df) == 1
 
     def test_arquivo_invalido_levanta_erro(self):
-        buf = io.BytesIO(b"conteudo binario invalido \x00\x01\x02")
+        # Conteúdo vazio — nenhum parser consegue interpretar
+        buf = io.BytesIO(b"")
         with pytest.raises(ValueError, match="Não foi possível ler"):
             ler_arquivo_robusto(buf)

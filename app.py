@@ -31,163 +31,16 @@ from src.reports.exportador_tiny import (
     gerar_planilha_importacao_tiny,
     gerar_planilha_importacao_produtos_tiny,
 )
+from src.ui.estilos import CSS_GLOBAL
+from src.ui.componentes import (
+    exibir_metricas_4_colunas,
+    exibir_painel_saude,
+    converter_dataframe,
+    montar_df_erros,
+)
 
-
-# Estilização CSS Moderna (Premium, Glassmorphism, Animations)
-st.markdown("""
-<style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap');
-    
-    html, body, [class*="css"]  {
-        font-family: 'Inter', sans-serif;
-    }
-    
-    .stApp {
-        background: linear-gradient(135deg, #f6f8fd 0%, #f1f5f9 100%);
-    }
-
-    h1, h2, h3, h4 {
-        color: #1e293b;
-        font-weight: 800;
-        letter-spacing: -0.02em;
-    }
-
-    .metric-card {
-        background: rgba(255, 255, 255, 0.7);
-        backdrop-filter: blur(10px);
-        -webkit-backdrop-filter: blur(10px);
-        border: 1px solid rgba(255, 255, 255, 0.4);
-        border-radius: 16px;
-        padding: 20px;
-        box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.01);
-        text-align: center;
-        margin-bottom: 20px;
-        transition: transform 0.3s ease, box-shadow 0.3s ease;
-    }
-    
-    .metric-card:hover {
-        transform: translateY(-5px);
-        box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
-    }
-    
-    .metric-value {
-        font-size: 36px;
-        font-weight: 800;
-        line-height: 1.2;
-        margin-bottom: 5px;
-        background: linear-gradient(to right, #2563eb, #3b82f6);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-    }
-    
-    .metric-value.nos-dois { background: linear-gradient(to right, #059669, #10b981); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
-    .metric-value.magis { background: linear-gradient(to right, #dc2626, #ef4444); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
-    .metric-value.tiny { background: linear-gradient(to right, #d97706, #f59e0b); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
-    .metric-value.divergente { background: linear-gradient(to right, #7c3aed, #8b5cf6); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
-    
-    .metric-label {
-        font-size: 14px;
-        font-weight: 600;
-        color: #64748b;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-    }
-
-    /* Style sidebar */
-    [data-testid="stSidebar"] {
-        background-color: #ffffff;
-        border-right: 1px solid #e2e8f0;
-    }
-
-    [data-testid="stSidebar"] h1, [data-testid="stSidebar"] h2 {
-        color: #0f172a;
-    }
-
-    /* Buttons */
-    .stButton>button {
-        background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
-        color: white;
-        border: none;
-        border-radius: 12px;
-        font-weight: 600;
-        padding: 0.5rem 1rem;
-        transition: all 0.3s ease;
-        box-shadow: 0 4px 6px -1px rgba(37, 99, 235, 0.2);
-    }
-    
-    .stButton>button:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 10px 15px -3px rgba(37, 99, 235, 0.3);
-        color: white;
-    }
-    
-    /* Tabs */
-    .stTabs [data-baseweb="tab-list"] {
-        gap: 8px;
-        background-color: rgba(255,255,255,0.5);
-        padding: 8px;
-        border-radius: 12px;
-    }
-
-    .stTabs [data-baseweb="tab"] {
-        height: 50px;
-        white-space: pre-wrap;
-        background-color: transparent;
-        border-radius: 8px;
-        color: #475569;
-        font-weight: 600;
-    }
-    
-    .stTabs [aria-selected="true"] {
-        background-color: #ffffff;
-        color: #1e293b;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-    }
-
-    /* Health panel */
-    .health-panel {
-        background: #ffffff;
-        border: 1px solid #e2e8f0;
-        border-radius: 16px;
-        padding: 20px 24px;
-        margin-bottom: 20px;
-    }
-    .health-panel-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 10px;
-    }
-    .health-panel-title {
-        font-weight: 700;
-        color: #1e293b;
-        font-size: 15px;
-    }
-    .health-panel-pct {
-        font-weight: 800;
-        font-size: 22px;
-    }
-    .health-bar-track {
-        background: #f1f5f9;
-        border-radius: 99px;
-        height: 10px;
-        overflow: hidden;
-    }
-    .health-bar-fill {
-        height: 100%;
-        border-radius: 99px;
-    }
-    .health-panel-stats {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 20px;
-        margin-top: 12px;
-        font-size: 13px;
-        color: #64748b;
-    }
-
-</style>
-""", unsafe_allow_html=True)
+# Aplica estilos globais
+st.markdown(CSS_GLOBAL, unsafe_allow_html=True)
 
 
 def _calcular_kpis_produtos(resultados: dict) -> dict:
@@ -230,114 +83,14 @@ def _calcular_kpis_kits(resultados: dict) -> dict:
     }
 
 
-def exibir_painel_saude(kpis: dict, label: str):
-    """Barra de progresso de sincronização + totais de ação/erro."""
-    pct   = kpis['pct']
-    color = '#059669' if pct >= 80 else ('#d97706' if pct >= 50 else '#dc2626')
-
-    st.markdown(f"""
-    <div class="health-panel">
-        <div class="health-panel-header">
-            <span class="health-panel-title">Sincronização de {label}</span>
-            <span class="health-panel-pct" style="color:{color};">{pct}%</span>
-        </div>
-        <div class="health-bar-track">
-            <div class="health-bar-fill" style="width:{pct}%; background:{color};"></div>
-        </div>
-        <div class="health-panel-stats">
-            <span>✅ <b style="color:#1e293b;">{kpis['nos_dois']}</b> de {kpis['total_magis']} sincronizados</span>
-            <span>→ <b style="color:#2563eb;">{kpis['acoes_pendentes']}</b> ações pendentes</span>
-            <span>✕ <b style="color:#dc2626;">{kpis['erros_criticos']}</b> erros críticos</span>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
-
-
-def _montar_df_erros(resultados: dict) -> pd.DataFrame:
-    """Consolida todos os erros críticos num único DataFrame para exportação."""
-    partes = []
-    mapeamentos = [
-        ("divergencias_fiscais",    "Divergência Fiscal"),
-        ("duplicidades_sku_magis",  "Duplicidade SKU (Magis)"),
-        ("duplicidades_ean_magis",  "Duplicidade EAN (Magis)"),
-        ("duplicidades_sku_tiny",   "Duplicidade SKU (Tiny)"),
-        ("duplicidades_ean_tiny",   "Duplicidade EAN (Tiny)"),
-    ]
-    for chave, label in mapeamentos:
-        df = resultados.get(chave, pd.DataFrame())
-        if not df.empty:
-            d = df.copy()
-            d.insert(0, "tipo_erro", label)
-            partes.append(d)
-    if not partes:
-        return pd.DataFrame()
-    return pd.concat(partes, ignore_index=True)
-
-
-def converter_dataframe(dataframe: pd.DataFrame, formato: str, sheet_name: str):
-    """Serializa um DataFrame para o formato escolhido pelo usuário."""
-    import io
-    if formato == "CSV":
-        return (
-            dataframe.to_csv(index=False, sep=';', encoding='utf-8-sig').encode('utf-8-sig'),
-            "text/csv",
-            ".csv",
-        )
-    if formato == "XLS":
-        output = io.BytesIO()
-        try:
-            with pd.ExcelWriter(output, engine='xlwt') as writer:
-                dataframe.to_excel(writer, index=False, sheet_name=sheet_name)
-            return output.getvalue(), "application/vnd.ms-excel", ".xls"
-        except Exception:
-            logger.warning("Falha ao exportar como XLS (xlwt), usando XLSX como fallback.", exc_info=True)
-    output = io.BytesIO()
-    with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        dataframe.to_excel(writer, index=False, sheet_name=sheet_name)
-    return output.getvalue(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", ".xlsx"
-
-
 def exibir_metricas_produtos(resultados: dict[str, pd.DataFrame]):
     """Exibe cards de métricas para Produtos."""
-    st.markdown("### 📊 Visão Geral de Produtos")
-
-    col1, col2, col3, col4 = st.columns(4)
-
-    with col1:
-        total_nos_dois = len(resultados.get('presente_nos_dois', []))
-        st.markdown(f"""
-        <div class="metric-card">
-            <div class="metric-value nos-dois">{total_nos_dois}</div>
-            <div class="metric-label">✅ Sincronizados (OK)</div>
-        </div>
-        """, unsafe_allow_html=True)
-
-    with col2:
-        total_somente_magis = len(resultados.get('somente_magis', []))
-        st.markdown(f"""
-        <div class="metric-card">
-            <div class="metric-value magis">{total_somente_magis}</div>
-            <div class="metric-label">→ Importar no Tiny</div>
-        </div>
-        """, unsafe_allow_html=True)
-
-    with col3:
-        total_somente_tiny = len(resultados.get('somente_tiny', []))
-        st.markdown(f"""
-        <div class="metric-card">
-            <div class="metric-value tiny">{total_somente_tiny}</div>
-            <div class="metric-label">⚠️ Revisar no Tiny</div>
-        </div>
-        """, unsafe_allow_html=True)
-
-    with col4:
-        total_erros_fiscais = len(resultados.get('divergencias_fiscais', []))
-        st.markdown(f"""
-        <div class="metric-card">
-            <div class="metric-value divergente">{total_erros_fiscais}</div>
-            <div class="metric-label">✕ Divergência Fiscal</div>
-        </div>
-        """, unsafe_allow_html=True)
+    exibir_metricas_4_colunas("📊 Visão Geral de Produtos", [
+        (len(resultados.get('presente_nos_dois', [])), "✅ Sincronizados (OK)", "nos-dois"),
+        (len(resultados.get('somente_magis', [])), "→ Importar no Tiny", "magis"),
+        (len(resultados.get('somente_tiny', [])), "⚠️ Revisar no Tiny", "tiny"),
+        (len(resultados.get('divergencias_fiscais', [])), "✕ Divergência Fiscal", "divergente"),
+    ])
 
     # Nota sobre inativos filtrados
     ignorados_magis = len(resultados.get('somente_magis_inativos', []))
@@ -353,45 +106,12 @@ def exibir_metricas_produtos(resultados: dict[str, pd.DataFrame]):
 
 def exibir_metricas_kits(resultados: dict[str, pd.DataFrame]):
     """Exibe cards de métricas para Kits."""
-    st.markdown("### 📦 Visão Geral de Kits")
-
-    col1, col2, col3, col4 = st.columns(4)
-
-    with col1:
-        total_nos_dois = len(resultados.get('kits_nos_dois', []))
-        st.markdown(f"""
-        <div class="metric-card">
-            <div class="metric-value nos-dois">{total_nos_dois}</div>
-            <div class="metric-label">✅ Sincronizados (OK)</div>
-        </div>
-        """, unsafe_allow_html=True)
-
-    with col2:
-        total_somente_magis = len(resultados.get('kits_somente_magis', []))
-        st.markdown(f"""
-        <div class="metric-card">
-            <div class="metric-value magis">{total_somente_magis}</div>
-            <div class="metric-label">→ Importar no Tiny</div>
-        </div>
-        """, unsafe_allow_html=True)
-
-    with col3:
-        total_somente_tiny = len(resultados.get('kits_somente_tiny', []))
-        st.markdown(f"""
-        <div class="metric-card">
-            <div class="metric-value tiny">{total_somente_tiny}</div>
-            <div class="metric-label">⚠️ Revisar no Tiny</div>
-        </div>
-        """, unsafe_allow_html=True)
-
-    with col4:
-        total_divergentes = len(resultados.get('kits_divergentes', []))
-        st.markdown(f"""
-        <div class="metric-card">
-            <div class="metric-value divergente">{total_divergentes}</div>
-            <div class="metric-label">✕ Composição Divergente</div>
-        </div>
-        """, unsafe_allow_html=True)
+    exibir_metricas_4_colunas("📦 Visão Geral de Kits", [
+        (len(resultados.get('kits_nos_dois', [])), "✅ Sincronizados (OK)", "nos-dois"),
+        (len(resultados.get('kits_somente_magis', [])), "→ Importar no Tiny", "magis"),
+        (len(resultados.get('kits_somente_tiny', [])), "⚠️ Revisar no Tiny", "tiny"),
+        (len(resultados.get('kits_divergentes', [])), "✕ Composição Divergente", "divergente"),
+    ])
 
     # Nota sobre inativos/desconhecidos filtrados
     ignorados = len(resultados.get('kits_somente_magis_inativos', []))
@@ -451,7 +171,7 @@ def _renderizar_aba_produtos(resultados: dict, formato_download: str):
                     f"{n_div} divergência(s) fiscal(is) · {total_dup} duplicidade(s)."
                 )
             with col_btn:
-                df_erros = _montar_df_erros(resultados)
+                df_erros = montar_df_erros(resultados)
                 if not df_erros.empty:
                     data_err, mime_err, ext_err = converter_dataframe(df_erros, formato_download, "Erros Críticos")
                     st.download_button(

@@ -45,7 +45,13 @@ LAYOUT_IMPORTACAO_TINY = [
 ]
 
 
-_STATUS_TINY = {'ATIVO': 'Ativo', 'INATIVO': 'Inativo', 'EXCLUIDO': 'Inativo'}
+def _carregar_mapa_status_tiny() -> dict:
+    with open(CONFIG_DIR / "regras_normalizacao.yaml", encoding="utf-8") as f:
+        regras = yaml.safe_load(f)
+    return regras.get("mapa_status_tiny", {'ATIVO': 'Ativo', 'INATIVO': 'Inativo', 'EXCLUIDO': 'Inativo'})
+
+
+_STATUS_TINY = _carregar_mapa_status_tiny()
 
 
 def gerar_planilha_importacao_produtos_tiny(df_magis: pd.DataFrame) -> pd.DataFrame:
