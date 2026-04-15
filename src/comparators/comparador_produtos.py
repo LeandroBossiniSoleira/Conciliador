@@ -71,7 +71,9 @@ def classificar(row: pd.Series) -> str:
 # Detecção de divergências em campos fiscais
 # ────────────────────────────────────────────
 
-CAMPOS_COMPARACAO = ["ncm", "cest", "origem", "ean_tributavel"]
+CAMPOS_COMPARACAO = _REGRAS.get(
+    "campos_divergencia", ["ncm", "cest", "origem", "ean_tributavel"]
+)
 
 
 def detectar_divergencias(df_both: pd.DataFrame) -> pd.DataFrame:
@@ -184,9 +186,11 @@ def executar_comparacao(
         logger.warning("Falha no match por título — retornando resultado vazio.", exc_info=True)
         resultados["sugestao_match_titulo"] = pd.DataFrame()
 
-    # 7) Validação fiscal em cada sistema original
-    magis_fiscal = validar_fiscal(magis.copy())
-    tiny_fiscal = validar_fiscal(tiny.copy())
+    # 7) Validação fiscal — apenas produtos ATIVOS (inativos não serão migrados)
+    magis_ativos, _ = _separar_por_status(magis, "status")
+    tiny_ativos, _ = _separar_por_status(tiny, "status")
+    magis_fiscal = validar_fiscal(magis_ativos)
+    tiny_fiscal = validar_fiscal(tiny_ativos)
     erros_fiscais_magis = magis_fiscal[magis_fiscal["tem_erro_fiscal"]].copy()
     erros_fiscais_tiny = tiny_fiscal[tiny_fiscal["tem_erro_fiscal"]].copy()
     resultados["erros_fiscais_magis"] = erros_fiscais_magis

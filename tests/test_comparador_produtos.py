@@ -204,11 +204,35 @@ class TestExecutarComparacao:
         # SKU004 e SKU005 são exclusivos Tiny; SKU005 é INATIVO
         assert "SKU004" in somente_tiny["sku"].values
 
-    def test_erros_fiscais_detectados(self, df_magis_basico, df_tiny_basico):
+    def test_erros_fiscais_detectados(self, df_tiny_basico):
+        # Produto ATIVO sem NCM deve ser reportado como erro fiscal.
+        magis = pd.DataFrame({
+            "sku": ["SKU999"],
+            "titulo": ["PRODUTO ATIVO SEM NCM"],
+            "ean": ["7891234569999"],
+            "ean_tributavel": ["7891234569999"],
+            "ncm": [None],
+            "cest": [None],
+            "origem": ["0"],
+            "preco_custo": [10.0],
+            "estoque": [1],
+            "status": ["ATIVO"],
+            "marca": ["X"],
+            "sistema_origem": ["MAGIS"],
+        })
+        resultado = executar_comparacao(magis, df_tiny_basico)
+        erros_magis = resultado["erros_fiscais_magis"]
+        assert "SKU999" in erros_magis["sku"].values
+
+    def test_erros_fiscais_excluem_inativos(self, df_magis_basico, df_tiny_basico):
+        # SKU003 está INATIVO no Magis e tem NCM ausente — não pode aparecer
+        # como erro fiscal (produto inativo não será migrado).
         resultado = executar_comparacao(df_magis_basico, df_tiny_basico)
         erros_magis = resultado["erros_fiscais_magis"]
-        # SKU002 sem CEST, SKU003 sem NCM
-        assert len(erros_magis) >= 1
+        assert "SKU003" not in erros_magis["sku"].values
+        # SKU005 está INATIVO no Tiny — idem.
+        erros_tiny = resultado["erros_fiscais_tiny"]
+        assert "SKU005" not in erros_tiny["sku"].values
 
     def test_dataframes_vazios(self):
         magis = pd.DataFrame(columns=["sku", "titulo", "ean", "ean_tributavel",

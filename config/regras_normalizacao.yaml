@@ -41,10 +41,17 @@ similaridade:
 validacao_fiscal:
   obrigatorios:
     - ncm
+    - cest
     - origem
   opcionais:
-    - cest
     - cod_anp
+
+# Campos fiscais comparados entre Magis e Tiny para detecção de divergência
+campos_divergencia:
+  - ncm
+  - cest
+  - origem
+  - ean_tributavel
 
 # Status considerados inativos para fins de filtro/classificação
 statuses_inativos:
