@@ -346,5 +346,28 @@ def gerar_planilha_importacao_tiny(
     ]
     
     df_importacao = pd.DataFrame(importacao_rows, columns=colunas_finais)
-    
+
     return df_importacao, rejeitados, df_correcao_tipos, alertas_tipo
+
+
+def gerar_planilha_importacao_kits_divergentes(
+    df_magis_kits_raw: pd.DataFrame,
+    df_kits_divergentes: pd.DataFrame,
+    df_tiny_produtos_norm: pd.DataFrame | None = None,
+) -> tuple[pd.DataFrame, list[dict]]:
+    """Gera planilha Tiny (7 colunas) para kits com composição divergente,
+    usando a composição do Magis como fonte da verdade.
+    """
+    if df_magis_kits_raw.empty or df_kits_divergentes.empty:
+        return pd.DataFrame(), []
+
+    if 'sku_kit' not in df_kits_divergentes.columns:
+        return pd.DataFrame(), []
+
+    df_alvo = df_kits_divergentes[['sku_kit']].drop_duplicates()
+    df_imp, rejeitados, _, _ = gerar_planilha_importacao_tiny(
+        df_magis_kits_raw,
+        df_alvo,
+        df_tiny_produtos_norm,
+    )
+    return df_imp, rejeitados

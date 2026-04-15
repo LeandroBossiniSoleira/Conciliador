@@ -32,6 +32,7 @@ from src.reports.gerar_relatorios import gerar_excel, imprimir_resumo
 from src.reports.exportador_tiny import (
     gerar_planilha_importacao_produtos_tiny,
     gerar_planilha_importacao_tiny,
+    gerar_planilha_importacao_kits_divergentes,
 )
 
 
@@ -149,6 +150,20 @@ def main():
         if rejeitados:
             print(f"⚠️  {len(rejeitados)} kit(s) rejeitado(s):")
             for r in rejeitados:
+                print(f"   - {r['sku_kit']}: {r['motivo']}")
+
+        df_import_div, rej_div = gerar_planilha_importacao_kits_divergentes(
+            magis_kits_raw, res_kits["divergentes"], tiny_norm
+        )
+        if not df_import_div.empty:
+            output_dir = ROOT / "data" / "output"
+            output_dir.mkdir(parents=True, exist_ok=True)
+            caminho_div = str(output_dir / "correcao_kits_divergentes_tiny.xlsx")
+            df_import_div.to_excel(caminho_div, index=False)
+            print(f"📥 Planilha de correção de kits divergentes: {caminho_div}")
+        if rej_div:
+            print(f"⚠️  {len(rej_div)} kit(s) divergente(s) não exportável(is):")
+            for r in rej_div:
                 print(f"   - {r['sku_kit']}: {r['motivo']}")
 
         if alertas:

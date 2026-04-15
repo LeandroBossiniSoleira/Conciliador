@@ -1,10 +1,13 @@
 import io
 import logging
+import re
 import warnings
 
 import pandas as pd
 import yaml
 from pathlib import Path
+
+_SUFIXO_TIPO_MAGIS = re.compile(r"\s*\([SN]\)\s*$")
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +67,9 @@ def carregar_generico(arquivos, mapa_key: str, sistema_origem: str) -> pd.DataFr
         return pd.DataFrame()
 
     df = pd.concat(dfs, ignore_index=True)
+
+    if mapa_key.startswith("magis"):
+        df.columns = [_SUFIXO_TIPO_MAGIS.sub("", str(c)) for c in df.columns]
 
     colunas_presentes = {k: v for k, v in colunas.items() if k in df.columns}
     df = df.rename(columns=colunas_presentes)

@@ -30,6 +30,7 @@ from src.reports.gerar_relatorios import gerar_excel
 from src.reports.exportador_tiny import (
     gerar_planilha_importacao_tiny,
     gerar_planilha_importacao_produtos_tiny,
+    gerar_planilha_importacao_kits_divergentes,
 )
 from src.ui.estilos import CSS_GLOBAL
 from src.ui.componentes import (
@@ -353,6 +354,29 @@ def _renderizar_aba_kits(resultados: dict, formato_download: str):
             )
             st.dataframe(df, use_container_width=True)
 
+            df_imp_div = resultados.get("df_import_kits_divergentes", pd.DataFrame())
+            if not df_imp_div.empty:
+                data_d, mime_d, ext_d = converter_dataframe(
+                    df_imp_div, formato_download, 'Kits Divergentes'
+                )
+                st.download_button(
+                    label=f"📥 Baixar Planilha de Correção de Kits no Tiny ({formato_download})",
+                    data=data_d,
+                    file_name=f"Correcao_Kits_Divergentes_Tiny{ext_d}",
+                    mime=mime_d,
+                    use_container_width=True,
+                    type="primary",
+                )
+                st.caption(
+                    "⬆️ Essa planilha substitui a composição atual dos kits no Tiny "
+                    "pela composição como está no Magis. Importe em "
+                    "**Tiny → Cadastros → Produtos → Mais Ações → Importar kits/fabricados**."
+                )
+            rej_div = resultados.get("kits_divergentes_rejeitados", [])
+            if rej_div:
+                with st.expander(f"⚠️ {len(rej_div)} kit(s) divergente(s) não exportáveis"):
+                    st.dataframe(pd.DataFrame(rej_div), use_container_width=True)
+
     # TAB 1 — Importar no Tiny
     with tabs_k[1]:
         df = resultados.get("kits_somente_magis", pd.DataFrame())
@@ -624,6 +648,14 @@ def main():
                     resultados["kits_rejeitados_importacao"] = kits_rejeitados
                     resultados["df_correcao_tipos"] = df_correcao_tipos
                     resultados["alertas_tipo"] = alertas_tipo
+
+                    df_import_div_kits, rej_div_kits = gerar_planilha_importacao_kits_divergentes(
+                        magis_kits_raw,
+                        res_kits["divergentes"],
+                        tiny_norm,
+                    )
+                    resultados["df_import_kits_divergentes"] = df_import_div_kits
+                    resultados["kits_divergentes_rejeitados"] = rej_div_kits
 
                 except Exception as e:
                     st.error(f"Erro ao avaliar Kits: {str(e)}")
