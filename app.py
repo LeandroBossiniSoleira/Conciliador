@@ -322,6 +322,81 @@ def _renderizar_aba_produtos(resultados: dict, formato_download: str):
             st.dataframe(df[valid_cols], use_container_width=True)
 
 
+def _renderizar_aba_catalogo_tiny(tiny_norm: pd.DataFrame, formato_download: str):
+    """Catálogo do Tiny com filtro de produtos pai (Código do pai vazio)."""
+    from src.filtros.catalogo_tiny import filtrar_produtos_pai
+
+    if tiny_norm is None or tiny_norm.empty:
+        st.info("Nenhum dado do Tiny carregado.")
+        return
+
+    total = len(tiny_norm)
+    pais = filtrar_produtos_pai(tiny_norm)
+    n_pais = len(pais)
+    n_filhos = total - n_pais
+
+    exibir_metricas_4_colunas("📚 Visão Geral do Catálogo (Tiny)", [
+        (total,    "Total no Tiny",         "nos-dois"),
+        (n_pais,   "Produtos pai",          "magis"),
+        (n_filhos, "Variações (filhos)",    "tiny"),
+        (round(n_pais / total * 100) if total else 0, "% Pais", "divergente"),
+    ])
+
+    if "codigo_pai" not in tiny_norm.columns:
+        st.info(
+            "ℹ️ A planilha enviada não contém a coluna **Código do pai**. "
+            "Todos os SKUs estão sendo tratados como produtos pai por padrão."
+        )
+
+    st.markdown("#### 📑 Lista de SKUs")
+
+    modo = st.radio(
+        "Visualização",
+        options=["Apenas produtos pai", "Catálogo completo"],
+        horizontal=True,
+        key="catalogo_tiny_modo",
+    )
+    df_exibir = pais if modo == "Apenas produtos pai" else tiny_norm
+
+    busca = st.text_input(
+        "🔎 Buscar por SKU ou título",
+        key="catalogo_tiny_busca",
+        placeholder="Digite parte do SKU ou do título...",
+    ).strip()
+    if busca:
+        mask = pd.Series(False, index=df_exibir.index)
+        if "sku" in df_exibir.columns:
+            mask = mask | df_exibir["sku"].astype(str).str.contains(busca, case=False, na=False)
+        if "titulo" in df_exibir.columns:
+            mask = mask | df_exibir["titulo"].astype(str).str.contains(busca, case=False, na=False)
+        df_exibir = df_exibir.loc[mask]
+
+    colunas_preferidas = [
+        "sku", "titulo", "codigo_pai", "tipo_produto",
+        "ncm", "cest", "estoque", "preco", "status",
+    ]
+    colunas_visiveis = [c for c in colunas_preferidas if c in df_exibir.columns]
+    if not colunas_visiveis:
+        colunas_visiveis = list(df_exibir.columns[:8])
+
+    col_msg, col_btn = st.columns([3, 1])
+    with col_msg:
+        rotulo = "produto(s) pai" if modo == "Apenas produtos pai" else "produto(s)"
+        st.caption(f"Exibindo **{len(df_exibir)} {rotulo}**.")
+    with col_btn:
+        sufixo_arquivo = "pais" if modo == "Apenas produtos pai" else "completo"
+        dados, mime, ext = converter_dataframe(df_exibir[colunas_visiveis], formato_download, "Catalogo_Tiny")
+        st.download_button(
+            label=f"📥 Exportar ({formato_download})",
+            data=dados,
+            file_name=f"Catalogo_Tiny_{sufixo_arquivo}{ext}",
+            mime=mime,
+            use_container_width=True,
+        )
+
+    st.dataframe(df_exibir[colunas_visiveis], use_container_width=True, hide_index=True)
+
+
 def _renderizar_aba_kits(resultados: dict, formato_download: str):
     """Renderiza a aba de análise de Kits (KPIs, métricas e 4 sub-tabs)."""
     kpis_k = _calcular_kpis_kits(resultados)
@@ -519,13 +594,14 @@ def main():
 
     # Flags de contexto
     tem_produtos = bool(files_magis and files_tiny)
+    tem_catalogo_tiny = bool(files_tiny)  # Tiny sozinho habilita visão de Catálogo
     tem_kits = bool(files_magis_kits or files_tiny_kits)
 
     # Área principal
     if not comecar:
         if not files_magis and not files_tiny and not files_magis_kits and not files_tiny_kits:
             st.info("👈 Adicione os arquivos no menu lateral (Produtos e/ou Kits) e clique em Processar.")
-            
+
             col1, col2, col3 = st.columns([1, 2, 1])
             with col2:
                 st.markdown("""
@@ -536,14 +612,15 @@ def main():
                 """, unsafe_allow_html=True)
         return
 
-    if not tem_produtos and not tem_kits:
-        st.error("⚠️ Você precisa enviar ao menos um par de arquivos (Produtos **ou** Kits) do Magis e do Tiny.")
+    if not tem_produtos and not tem_catalogo_tiny and not tem_kits:
+        st.error("⚠️ Você precisa enviar ao menos um par de arquivos (Produtos **ou** Kits) do Magis e do Tiny, ou apenas a planilha do Tiny para ver o Catálogo.")
         return
-    
-    if (files_magis and not files_tiny) or (files_tiny and not files_magis):
-        st.error("⚠️ Para comparar **Produtos**, envie as planilhas de **ambos** os sistemas (Magis e Tiny).")
+
+    # Magis sozinho não tem uso — exige par com Tiny
+    if files_magis and not files_tiny:
+        st.error("⚠️ A planilha do **Magis** só pode ser usada em conjunto com a do **Tiny**. Envie também o Tiny ou use apenas a planilha do Tiny para ver o Catálogo.")
         return
-    
+
     if (files_magis_kits and not files_tiny_kits) or (files_tiny_kits and not files_magis_kits):
         st.error("⚠️ Para comparar **Kits**, envie as planilhas de **ambos** os sistemas (Magis e Tiny).")
         return
@@ -570,21 +647,30 @@ def main():
         tiny_norm = None
         magis_norm = None
 
-        # Processamento de Produtos
-        if tem_produtos:
-            with st.spinner('Lendo planilhas de Produtos e normalizando dados...'):
+        # Processamento de Produtos — Tiny é obrigatório quando há arquivos; Magis é opcional
+        if tem_catalogo_tiny:
+            with st.spinner('Lendo planilha do Tiny e normalizando dados...'):
                 try:
-                    magis_raw = carregar_magis(files_magis)
                     tiny_raw = carregar_tiny(files_tiny)
-
-                    if magis_raw.empty:
-                        st.error("⚠️ A planilha do **Magis** está vazia ou não pôde ser lida. Verifique o arquivo enviado.")
-                        return
                     if tiny_raw.empty:
                         st.error("⚠️ A planilha do **Tiny** está vazia ou não pôde ser lida. Verifique o arquivo enviado.")
                         return
+                    if "sku" not in tiny_raw.columns:
+                        st.error("⚠️ **Erro Crítico:** A coluna `SKU` não foi encontrada no **Tiny** após o mapeamento.")
+                        return
+                    tiny_norm = normalizar_dataframe(tiny_raw, sistema="tiny")
+                except Exception as e:
+                    st.error(f"Erro ao carregar e normalizar o Tiny: {str(e)}")
+                    return
 
-                    # Validação de colunas obrigatórias
+        if tem_produtos:
+            with st.spinner('Lendo planilha do Magis e normalizando dados...'):
+                try:
+                    magis_raw = carregar_magis(files_magis)
+                    if magis_raw.empty:
+                        st.error("⚠️ A planilha do **Magis** está vazia ou não pôde ser lida. Verifique o arquivo enviado.")
+                        return
+
                     colunas_obrigatorias = {"sku": "SKU"}
                     colunas_recomendadas = {"titulo": "Título/Descrição", "ncm": "NCM", "origem": "Origem"}
 
@@ -592,25 +678,21 @@ def main():
                         if col not in magis_raw.columns:
                             st.error(f"⚠️ **Erro Crítico:** A coluna `{label}` não foi encontrada no **Magis** após o mapeamento.")
                             return
-                        if col not in tiny_raw.columns:
-                            st.error(f"⚠️ **Erro Crítico:** A coluna `{label}` não foi encontrada no **Tiny** após o mapeamento.")
-                            return
 
                     avisos = []
                     for col, label in colunas_recomendadas.items():
                         if col not in magis_raw.columns:
                             avisos.append(f"`{label}` ausente no Magis")
-                        if col not in tiny_raw.columns:
+                        if col not in tiny_norm.columns:
                             avisos.append(f"`{label}` ausente no Tiny")
                     if avisos:
                         st.warning(f"⚠️ Coluna(s) recomendada(s) não encontrada(s): {', '.join(avisos)}. "
                                    "A comparação continuará, mas alguns relatórios podem ficar incompletos.")
 
                     magis_norm = normalizar_dataframe(magis_raw, sistema="magis")
-                    tiny_norm = normalizar_dataframe(tiny_raw, sistema="tiny")
 
                 except Exception as e:
-                    st.error(f"Erro ao carregar e normalizar Produtos: {str(e)}")
+                    st.error(f"Erro ao carregar e normalizar o Magis: {str(e)}")
                     return
 
             with st.spinner('Cruzando bases de Produtos e identificando divergências...'):
@@ -661,15 +743,18 @@ def main():
                     st.error(f"Erro ao avaliar Kits: {str(e)}")
                     tem_kits = False
 
-        with st.spinner('Gerando Relatório Consolidado...'):
-            try:
-                output_dir = ROOT / "data" / "output"
-                output_dir.mkdir(parents=True, exist_ok=True)
-                caminho_excel = str(output_dir / "comparativo_temp.xlsx")
-                gerar_excel(resultados, caminho_excel)
-            except Exception as e:
-                st.error(f"Erro ao gerar Excel: {str(e)}")
-                return
+        # Só gera Excel consolidado se houve comparação ou kits a consolidar
+        caminho_excel = None
+        if tem_produtos or tem_kits:
+            with st.spinner('Gerando Relatório Consolidado...'):
+                try:
+                    output_dir = ROOT / "data" / "output"
+                    output_dir.mkdir(parents=True, exist_ok=True)
+                    caminho_excel = str(output_dir / "comparativo_temp.xlsx")
+                    gerar_excel(resultados, caminho_excel)
+                except Exception as e:
+                    st.error(f"Erro ao gerar Excel: {str(e)}")
+                    return
 
         # Salva no session_state para reutilizar em re-runs
         st.session_state["resultados"] = resultados
@@ -682,35 +767,42 @@ def main():
     # Sucesso
     st.toast("Análise finalizada com sucesso!", icon="✅")
 
-    # Exibições de UI — montar abas conforme o que foi enviado
-    if tem_produtos and tem_kits:
-        aba_produtos, aba_kits = st.tabs(["🛒 Análise de Produtos", "📦 Análise de Kits"])
-    elif tem_produtos:
-        aba_produtos = st.container()
-    else:
-        aba_kits = st.container()
-
+    # Exibições de UI — montar abas dinamicamente conforme o que foi enviado
+    aba_specs: list[tuple[str, str]] = []
     if tem_produtos:
-        with aba_produtos:
-            _renderizar_aba_produtos(resultados, formato_download)
-
+        aba_specs.append(("🛒 Análise de Produtos", "produtos"))
+    if tem_catalogo_tiny:
+        aba_specs.append(("📚 Catálogo Tiny", "catalogo_tiny"))
     if tem_kits:
-        with aba_kits:
-            _renderizar_aba_kits(resultados, formato_download)
+        aba_specs.append(("📦 Análise de Kits", "kits"))
 
-    st.markdown("---")
+    if len(aba_specs) > 1:
+        containers = st.tabs([label for label, _ in aba_specs])
+    else:
+        containers = [st.container()]
 
-    # Botão de download do relatório consolidado
-    with open(caminho_excel, "rb") as file:
-        file_data = file.read()
-    st.download_button(
-        label="📥 Exportar Relatório Consolidado (Excel)",
-        data=file_data,
-        file_name="Diagnostico_Catalogo_Magis_Tiny.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        type="primary",
-        use_container_width=True
-    )
+    for (label, chave), container in zip(aba_specs, containers):
+        with container:
+            if chave == "produtos":
+                _renderizar_aba_produtos(resultados, formato_download)
+            elif chave == "catalogo_tiny":
+                _renderizar_aba_catalogo_tiny(tiny_norm, formato_download)
+            elif chave == "kits":
+                _renderizar_aba_kits(resultados, formato_download)
+
+    # Botão de download do relatório consolidado (só quando houve comparação/kits)
+    if caminho_excel:
+        st.markdown("---")
+        with open(caminho_excel, "rb") as file:
+            file_data = file.read()
+        st.download_button(
+            label="📥 Exportar Relatório Consolidado (Excel)",
+            data=file_data,
+            file_name="Diagnostico_Catalogo_Magis_Tiny.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            type="primary",
+            use_container_width=True
+        )
 
 if __name__ == "__main__":
     main()
