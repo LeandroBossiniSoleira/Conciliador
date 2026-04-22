@@ -38,6 +38,28 @@ Ferramenta de diagnóstico e ação para comparar, sanear e migrar catálogos de
 - **Revisar no Tiny** — kits ativos exclusivos do Tiny
 - **Sincronizados** — kits com composição idêntica nos dois sistemas
 
+### Correção de SKUs (padrão MEF)
+Diagnostica os SKUs do Tiny contra o padrão oficial `PP-MPT-QQQQ-EECC-[GG]` (SOP SKU-01) e gera planilha de reimportação com os SKUs renomeados.
+
+- **Parser tolerante** — quebra o SKU em blocos (PP produto, MPT matéria-prima+tamanho, QQQQ quantidade, EECC estampa+cor, GG gênero) e classifica erros como **estruturais** ou **semânticos**
+- **Motor de sugestão** a partir do título, com:
+  - Longest-match contra o dicionário oficial + aprendido
+  - Tolerância a plural, diminutivo e variação de gênero (`FRALDA ↔ FRALDAS/FRALDINHAS`, `FEMININO ↔ FEMININA`)
+  - Heurísticas de kit — `+` no título força `PP=KT`; `Kit N unidades` mantém PP específico + `QQQQ=NNNU`
+  - Nunca inventa códigos fora do dicionário; nunca sugere `EE=LS` automaticamente
+  - Score de **confiança 0–100** por SKU (barra de progresso na tabela)
+- **Tabela editável** (`st.data_editor`) — o usuário pode ajustar a sugestão antes de exportar e marca com checkbox **Aprovar** apenas as linhas que entram na reimportação
+- **Filtros** — apenas com erro, apenas kits, sem sugestão automática, baixa confiança (<60) + busca livre
+- **Exportações:**
+  - 📋 Lista de renomeação (diagnóstico completo — auditoria)
+  - 📦 Planilha Tiny 64 colunas com apenas os SKUs aprovados, já renomeados
+
+### Dicionário SKU (CRUD)
+- **7 sub-tabs** (PP, MP, T, QQQQ, EE, CC, GG) para gerenciar os códigos usados pelo corretor
+- Códigos **oficiais** vêm de `config/dicionario_sku.yaml` (seed do SOP SKU-01) e são readonly
+- Códigos **aprendidos** são persistidos em `config/dicionario_sku_aprendido.json` — adicionados/removidos pela UI e reconhecidos imediatamente pelo corretor
+- Validação de tamanho por bloco (ex.: T = 1 char G/M/P; GG = FM/MS/NT; MP = 3 chars)
+
 ### Exportações contextuais
 Cada seção oferece o botão de download relevante para a ação:
 
@@ -48,6 +70,7 @@ Cada seção oferece o botão de download relevante para a ação:
 | Importar Kits | `Importacao_Kits_Tiny.xlsx` + `Correcao_Tipos_Produto_Tiny.xlsx` |
 | Revisar Produtos | `Revisao_Produtos_Tiny.xlsx` |
 | Revisar Kits | `Revisao_Kits_Tiny.xlsx` |
+| Correção de SKUs | `Correcao_SKUs_diagnostico.xlsx` + `Importacao_Tiny_SKUs_renomeados.xlsx` (64 colunas) |
 | Relatório Consolidado | `Diagnostico_Catalogo_Magis_Tiny.xlsx` — todas as abas |
 
 Formato de exportação configurável na sidebar: **XLSX** (padrão) · **CSV** · **XLS**
@@ -110,6 +133,8 @@ app.py                          # Entrypoint Streamlit — UI, KPIs, tabs
 config/
   mapa_campos.yaml              # Mapeamento de colunas dos ERPs para schema interno
   regras_normalizacao.yaml      # Regras de limpeza de texto, status, campos fiscais
+  dicionario_sku.yaml           # Dicionário oficial de códigos de SKU (SOP SKU-01)
+  dicionario_sku_aprendido.json # Códigos aprendidos via UI (PP/MP/T/QQQQ/EE/CC/GG)
 src/
   loaders/                      # Carregamento e concatenação de planilhas (multi-arquivo)
     magis_loader.py
@@ -127,6 +152,16 @@ src/
   validators/
     fiscal_validator.py         # Validação de NCM, CEST, Origem
     duplicidades.py             # Detecção de SKU/EAN duplicados por sistema
+  sku/                          # Padronização de SKUs (padrão MEF PP-MPT-QQQQ-EECC-[GG])
+    dicionario.py               # Load/merge oficial+aprendido + reverse-index
+    parser.py                   # Quebra SKU em blocos (tolerante a variações)
+    validator.py                # Classifica erro estrutural × semântico × incompleto
+    corretor.py                 # Motor de sugestão a partir do título
+    exportador.py               # Lista de renomeação + planilha Tiny 64 col. renomeada
+  ui/
+    aba_correcao_sku.py         # Aba "Correção de SKUs" (diagnóstico + edição + export)
+    aba_dicionario_sku.py       # Aba "Dicionário SKU" (CRUD de códigos)
+    componentes.py              # Cards de métricas, painel de saúde, downloads
   reports/
     exportador_tiny.py          # Planilhas de importação de produtos e kits no formato Tiny
     gerar_relatorios.py         # Relatório consolidado Excel multi-abas
@@ -160,3 +195,26 @@ Se um dos ERPs renomear uma coluna na exportação, basta atualizar o mapeamento
 | Composição divergente | ✕ Erro | Corrigir composição |
 | Inativos/Excluídos no Magis | — | Ignorados automaticamente |
 | Status desconhecido | ℹ️ Info | Carregar planilha de produtos para classificar |
+
+### Padrão de SKU (MEF) — `PP-MPT-QQQQ-EECC-[GG]`
+
+Os SKUs da MEF Enxovais seguem a estrutura documentada no SOP SKU-01:
+
+| Bloco | Tamanho | Descrição |
+|---|---|---|
+| **PP** | 2 chars | Produto (ex.: `AM` = Almofada de Amamentação, `FR` = Fralda, `KT` = Kit) |
+| **MP** | 3 chars | Matéria-prima / acabamento (ex.: `POM`, `ALG`, `OVL`) — opcional |
+| **T** | 1 char | Tamanho `G`/`M`/`P` — opcional |
+| **QQQQ** | até 4 chars | Quantidade (`011U` = 11 unidades, `002A` = 2 anos, `05B5O` = 5 boca × 5 ombro, `6M18` = 6 a 18 meses, `ADUL`) |
+| **EE** | 2 chars | Estampa (ex.: `BL` = Balão, `NV` = Nuvem) — opcional |
+| **CC** | 2 chars | Cor (ex.: `AZ` = Azul, `RO` = Rosa) |
+| **GG** | 2 chars | Gênero (`FM`/`MS`/`NT`) — obrigatório apenas para produtos sortidos |
+
+**Classificação na aba Correção de SKUs:**
+
+| Classificação | Status | Ação sugerida |
+|---|---|---|
+| SKU bate com o padrão e todos os códigos existem | ✅ Correto | Nenhuma |
+| Estrutura quebrada (sem hífens, tamanho de bloco inválido) | ✕ Estrutural | Corrigir manualmente |
+| Estrutura OK, mas algum código não está no dicionário | ✕ Semântico | Aprovar sugestão ou cadastrar o código novo |
+| Sugestão com confiança < 60% | ⚠️ Ação manual | Revisar título e ajustar antes de aprovar |

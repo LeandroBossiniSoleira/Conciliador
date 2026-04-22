@@ -39,6 +39,8 @@ from src.ui.componentes import (
     converter_dataframe,
     montar_df_erros,
 )
+from src.ui.aba_correcao_sku import renderizar as _renderizar_aba_correcao_sku
+from src.ui.aba_dicionario_sku import renderizar as _renderizar_aba_dicionario_sku
 
 # Aplica estilos globais
 st.markdown(CSS_GLOBAL, unsafe_allow_html=True)
@@ -775,6 +777,9 @@ def main():
         aba_specs.append(("📚 Catálogo Tiny", "catalogo_tiny"))
     if tem_kits:
         aba_specs.append(("📦 Análise de Kits", "kits"))
+    if tem_catalogo_tiny:
+        aba_specs.append(("✅ Correção de SKUs", "correcao_sku"))
+        aba_specs.append(("📖 Dicionário SKU", "dicionario_sku"))
 
     if len(aba_specs) > 1:
         containers = st.tabs([label for label, _ in aba_specs])
@@ -789,6 +794,10 @@ def main():
                 _renderizar_aba_catalogo_tiny(tiny_norm, formato_download)
             elif chave == "kits":
                 _renderizar_aba_kits(resultados, formato_download)
+            elif chave == "correcao_sku":
+                _renderizar_aba_correcao_sku(tiny_norm, formato_download)
+            elif chave == "dicionario_sku":
+                _renderizar_aba_dicionario_sku()
 
     # Botão de download do relatório consolidado (só quando houve comparação/kits)
     if caminho_excel:

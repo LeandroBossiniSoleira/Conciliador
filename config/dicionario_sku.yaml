@@ -1,0 +1,117 @@
+# =============================================================
+# Dicionário oficial de códigos para SKUs — padrão MEF Enxovais
+# Baseado no SOP SKU-01 (set/2025).
+# Padrão: PP-MPT-QQQQ-EECC-[GG]
+# Correção do usuário: bloco de gênero é GG (2 chars), não GGG.
+# =============================================================
+
+# PP — Produto (2 caracteres)
+PP:
+  AM: Almofada de Amamentação
+  AP: Apoio de Bebê Conforto
+  BP: Berço Portátil
+  CA: Capa de Almofada
+  CB: Capa de Bebê Conforto
+  CC: Capa de Carrinho
+  CI: Protetor de Cinto
+  CN: Capa de Ninho
+  CP: Capota
+  CU: Cueiro
+  ED: Edredom
+  FR: Fralda
+  KT: Kit
+  LE: Lençol
+  MA: Manta
+  MQ: Mosquiteiro
+  NA: Naninha
+  NI: Ninho Redutor
+  PE: Pelúcia / Urso
+  RP: Roupão
+  SD: Saco de Dormir
+  SQ: Saquinho Organizador
+  TR: Trocador
+  TV: Travesseiro Anatômico
+  ZU: Zulo
+
+# MP — Matéria-prima / Acabamento (3 caracteres)
+MP:
+  POM: Com Pompom
+  ALG: Algodão
+  BAB: Com Babado
+  BOR: Bordado
+  FEL: Felpudo
+  FLE: Fleece
+  LAI: Com Laise
+  MIS: Misto
+  OVL: Acabamento Overlocado
+  PLS: Poliéster / Microfibra
+  PPP: Polipropileno
+  SBL: Sublimado
+  SHP: Sherpa
+  SMP: Simples
+  TLE: Tule
+  VIE: Acabamento em Viés
+
+# T — Tamanho (1 caractere)
+T:
+  G: Grande
+  M: Médio
+  P: Pequeno
+
+# QQQQ — Quantidade (até 4 caracteres)
+# Padrões seguem regex fixa (segurança); literais podem ser expandidos pela UI.
+QQQQ:
+  regex:
+    - {padrao: '^\d{1,3}A$',         desc: 'Tamanho em anos (2A, 002A, 016A)'}
+    - {padrao: '^\d{1,3}U$',         desc: 'Kit unidades iguais (2U, 011U, 099U)'}
+    - {padrao: '^\d{1,2}B\d{1,2}O$', desc: 'Kit misto Boca/Ombro (5B5O, 05B5O, 09B9O)'}
+    - {padrao: '^\dM\d{2}$',         desc: 'Faixa em meses (6M18)'}
+  literais:
+    ADUL: Tamanho Adulto
+
+# EE — Estampa (2 caracteres)
+EE:
+  BF: Botão de Flor
+  BL: Balão
+  CV: Chevron
+  DI: Dino
+  FL: Floral
+  LO: Losango
+  LS: Liso
+  LU: Luar
+  NV: Nuvem
+  PA: Poá
+  PR: Príncipe / Princesa
+  PV: Primavera
+  RE: Real / Realeza
+  SF: Safari
+  UR: Urso
+
+# CC — Cor (2 caracteres)
+CC:
+  AM: Amarelo
+  AZ: Azul
+  BR: Branco
+  CQ: Cáqui
+  CZ: Cinza
+  DO: Dourado
+  LI: Lilás
+  LR: Laranja
+  MS: Marsala
+  MC: Multi-Cor
+  MR: Marinho
+  PA: Palha
+  PI: Pink
+  PR: Preto
+  RO: Rosa
+  RS: Rosê
+  RY: Azul Royal
+  VD: Verde
+  VG: Verde Musgo
+  VM: Vermelho
+
+# GG — Gênero (2 caracteres). OPCIONAL — só para produtos sortidos por gênero.
+GG:
+  FM: Feminino
+  MS: Masculino
+  NT: Neutro
