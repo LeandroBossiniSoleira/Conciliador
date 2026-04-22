@@ -3,14 +3,17 @@ aba_dicionario_sku.py
 Aba "Dicionário SKU": CRUD dos códigos usados pelo corretor.
 
 Estrutura:
-  - 7 sub-tabs (PP, MP, T, QQQQ, EE, CC, GG)
-  - Cada sub-tab lista os códigos (oficiais + aprendidos) e permite:
-      ➕ Adicionar novos códigos em `aprendido`
-      ✏️ Editar descrição (oficial ou aprendido — edição de oficial cria
-         override em `aprendido`)
-      🗑️ Remover código aprendido. Se o código também existir no oficial,
-         a remoção apaga apenas o override e restaura a descrição oficial.
-  - Códigos puramente oficiais (sem override) não podem ser removidos.
+  - 7 sub-tabs (PP, MP, T, QQQQ, EE, CC, GG).
+  - Cada sub-tab tem UMA tabela com seleção de linha + três botões no topo:
+      ➕ Novo                — sempre habilitado (abre modal de cadastro)
+      ✏️ Editar selecionado  — habilitado quando há linha selecionada
+      🗑️ Remover selecionado — habilitado quando a linha selecionada está
+                                no aprendido (oficiais puros não removem)
+  - Cada botão abre um diálogo modal (`st.dialog`) com o form mínimo.
+  - Editar um código oficial cria um override em
+    `config/dicionario_sku_aprendido.json` (o YAML oficial é preservado).
+  - Remover um override apaga só a entrada do JSON e restaura a descrição
+    oficial do YAML.
 """
 
 from __future__ import annotations
@@ -56,15 +59,9 @@ def _extrair_dicts_bloco(bloco: str) -> tuple[dict, dict]:
 
 
 def _montar_df_bloco(bloco: str) -> pd.DataFrame:
-    """Monta DF unificado (oficial + aprendido) para um bloco, com coluna 'Origem'.
-
-    Se um código existe em ambos, aparece como 'aprendido (override)' com a
-    descrição do aprendido (que prevalece).
-    """
+    """Monta DF unificado (oficial + aprendido) para um bloco, com coluna 'Origem'."""
     d_ofi, d_apr = _extrair_dicts_bloco(bloco)
-
     linhas: list[dict] = []
-    # Oficiais sem override
     for cod, desc in sorted(d_ofi.items()):
         if cod in d_apr:
             linhas.append(
@@ -72,7 +69,6 @@ def _montar_df_bloco(bloco: str) -> pd.DataFrame:
             )
         else:
             linhas.append({"Código": cod, "Descrição": desc, "Origem": "oficial"})
-    # Aprendidos que não são override
     for cod, desc in sorted(d_apr.items()):
         if cod not in d_ofi:
             linhas.append({"Código": cod, "Descrição": desc, "Origem": "aprendido"})
@@ -80,8 +76,7 @@ def _montar_df_bloco(bloco: str) -> pd.DataFrame:
 
 
 def _validar_codigo(bloco: str, codigo: str) -> str | None:
-    """Retorna uma mensagem de erro se o código for inválido para o bloco,
-    ou None se estiver ok."""
+    """Retorna mensagem de erro se o código for inválido para o bloco; senão None."""
     tamanho = _TAMANHOS_ESPERADOS[bloco]
     if not codigo:
         return "Informe o código."
@@ -94,147 +89,229 @@ def _validar_codigo(bloco: str, codigo: str) -> str | None:
     return None
 
 
+def _dica_tamanho(bloco: str) -> str:
+    tamanho = _TAMANHOS_ESPERADOS[bloco]
+    if not tamanho:
+        return ""
+    return f" ({tamanho} char{'s' if tamanho > 1 else ''})"
+
+
+# ──────────────────────────── Diálogos modais ────────────────────────────
+
+@st.dialog("➕ Novo código")
+def _dialog_novo(bloco: str) -> None:
+    st.caption(f"Bloco **{_LABELS_BLOCO[bloco]}**.")
+
+    codigo = st.text_input(f"Código{_dica_tamanho(bloco)}", key=f"dlg_novo_cod_{bloco}")
+    descricao = st.text_input("Descrição", key=f"dlg_novo_desc_{bloco}")
+
+    c1, c2 = st.columns(2)
+    cancelar = c1.button(
+        "Cancelar", use_container_width=True, key=f"dlg_novo_cancel_{bloco}"
+    )
+    salvar = c2.button(
+        "Adicionar", type="primary", use_container_width=True,
+        key=f"dlg_novo_save_{bloco}",
+    )
+
+    if cancelar:
+        st.rerun()
+    if salvar:
+        codigo_n = codigo.strip().upper()
+        descricao_n = descricao.strip()
+        d_ofi, d_apr = _extrair_dicts_bloco(bloco)
+        erro = _validar_codigo(bloco, codigo_n)
+        if erro:
+            st.error(erro)
+        elif not descricao_n:
+            st.error("Informe a descrição.")
+        elif codigo_n in d_ofi or codigo_n in d_apr:
+            st.error(
+                f"Código {codigo_n} já existe. Use **Editar selecionado** "
+                "para alterar a descrição."
+            )
+        else:
+            try:
+                adicionar_codigo(bloco, codigo_n, descricao_n)
+                st.toast(f"✅ Código {codigo_n} adicionado ao bloco {bloco}.")
+                st.rerun()
+            except ValueError as e:
+                st.error(str(e))
+
+
+@st.dialog("✏️ Editar código")
+def _dialog_editar(bloco: str, codigo: str) -> None:
+    d_ofi, d_apr = _extrair_dicts_bloco(bloco)
+    if codigo not in d_ofi and codigo not in d_apr:
+        st.error(f"Código {codigo} não existe mais.")
+        if st.button("Fechar", key=f"dlg_edit_close_{bloco}_{codigo}"):
+            st.rerun()
+        return
+
+    cria_override = codigo in d_ofi and codigo not in d_apr
+    desc_vigente = d_apr.get(codigo, d_ofi.get(codigo, ""))
+
+    st.caption(f"Bloco **{_LABELS_BLOCO[bloco]}**, código **{codigo}**.")
+    if cria_override:
+        st.info(
+            "Este é um código **oficial**. Editá-lo cria um override em "
+            "`dicionario_sku_aprendido.json` (o YAML oficial é preservado)."
+        )
+
+    nova_desc = st.text_input(
+        "Descrição",
+        value=desc_vigente,
+        key=f"dlg_edit_desc_{bloco}_{codigo}",
+    )
+
+    c1, c2 = st.columns(2)
+    cancelar = c1.button(
+        "Cancelar", use_container_width=True,
+        key=f"dlg_edit_cancel_{bloco}_{codigo}",
+    )
+    salvar = c2.button(
+        "Salvar", type="primary", use_container_width=True,
+        key=f"dlg_edit_save_{bloco}_{codigo}",
+    )
+
+    if cancelar:
+        st.rerun()
+    if salvar:
+        nova_n = nova_desc.strip()
+        if not nova_n:
+            st.error("Descrição não pode ser vazia.")
+        elif nova_n == desc_vigente:
+            st.info("Nenhuma alteração detectada.")
+        else:
+            try:
+                adicionar_codigo(bloco, codigo, nova_n)
+                if cria_override:
+                    st.toast(f"✅ Override criado para {codigo} (oficial preservado).")
+                else:
+                    st.toast(f"✅ Descrição de {codigo} atualizada.")
+                st.rerun()
+            except ValueError as e:
+                st.error(str(e))
+
+
+@st.dialog("🗑️ Remover código")
+def _dialog_remover(bloco: str, codigo: str) -> None:
+    d_ofi, d_apr = _extrair_dicts_bloco(bloco)
+    if codigo not in d_apr:
+        st.error(
+            f"Código {codigo} não está em `aprendido` — apenas códigos aprendidos "
+            "(ou overrides de oficiais) podem ser removidos."
+        )
+        if st.button("Fechar", key=f"dlg_rem_close_{bloco}_{codigo}"):
+            st.rerun()
+        return
+
+    eh_override = codigo in d_ofi
+    desc = d_apr[codigo]
+
+    st.caption(f"Bloco **{_LABELS_BLOCO[bloco]}**.")
+    if eh_override:
+        st.warning(
+            f"**{codigo} — {desc}** é um override de um código oficial. "
+            "Remover apaga apenas o override e restaura a descrição oficial do YAML."
+        )
+    else:
+        st.warning(f"Remover **{codigo} — {desc}** do dicionário aprendido?")
+
+    c1, c2 = st.columns(2)
+    cancelar = c1.button(
+        "Cancelar", use_container_width=True,
+        key=f"dlg_rem_cancel_{bloco}_{codigo}",
+    )
+    confirmar = c2.button(
+        "Remover", type="primary", use_container_width=True,
+        key=f"dlg_rem_confirm_{bloco}_{codigo}",
+    )
+
+    if cancelar:
+        st.rerun()
+    if confirmar:
+        if remover_codigo(bloco, codigo):
+            if eh_override:
+                st.toast(f"🗑️ Override de {codigo} removido — descrição oficial restaurada.")
+            else:
+                st.toast(f"🗑️ Código {codigo} removido.")
+            st.rerun()
+        else:
+            st.error(f"Código {codigo} não encontrado em aprendidos.")
+
+
+# ──────────────────────────── Render da sub-tab ────────────────────────────
+
 def _renderizar_sub_tab(bloco: str) -> None:
     st.markdown(f"##### {_LABELS_BLOCO[bloco]}")
 
     df = _montar_df_bloco(bloco)
+    _, d_apr = _extrair_dicts_bloco(bloco)
+
+    # Reserva o espaço dos botões no topo para preenchê-lo após ler a seleção.
+    botoes_slot = st.empty()
+
     if df.empty:
-        st.info("Nenhum código cadastrado neste bloco.")
-    else:
-        st.dataframe(df, use_container_width=True, hide_index=True)
-
-    d_ofi, d_apr = _extrair_dicts_bloco(bloco)
-    tamanho = _TAMANHOS_ESPERADOS[bloco]
-    dica_tamanho = f" ({tamanho} char{'s' if tamanho and tamanho > 1 else ''})" if tamanho else ""
-
-    # ── ➕ Adicionar ──
-    st.markdown("**➕ Adicionar código**")
-    with st.form(key=f"form_add_{bloco}", clear_on_submit=True):
-        c1, c2, c3 = st.columns([1, 3, 1])
-        with c1:
-            codigo = st.text_input(f"Código{dica_tamanho}", key=f"cod_add_{bloco}")
-        with c2:
-            descricao = st.text_input("Descrição", key=f"desc_add_{bloco}")
-        with c3:
-            st.write("")
-            st.write("")
-            submit_add = st.form_submit_button("Adicionar", use_container_width=True)
-
-        if submit_add:
-            codigo_n = codigo.strip().upper()
-            descricao_n = descricao.strip()
-            erro = _validar_codigo(bloco, codigo_n)
-            if erro:
-                st.error(erro)
-            elif not descricao_n:
-                st.error("Informe a descrição.")
-            elif codigo_n in d_ofi or codigo_n in d_apr:
-                st.error(
-                    f"Código {codigo_n} já existe neste bloco. "
-                    "Use a seção '✏️ Editar' para alterar a descrição."
-                )
-            else:
-                try:
-                    adicionar_codigo(bloco, codigo_n, descricao_n)
-                    st.success(f"Código {codigo_n} adicionado ao bloco {bloco}.")
-                    st.rerun()
-                except ValueError as e:
-                    st.error(str(e))
-
-    # ── ✏️ Editar ──
-    todos_codigos = sorted(set(d_ofi) | set(d_apr))
-    if todos_codigos:
-        st.markdown("**✏️ Editar descrição**")
+        st.info("Nenhum código cadastrado neste bloco. Use **➕ Novo** para começar.")
+        with botoes_slot.container():
+            col_n, _spacer = st.columns([1, 5])
+            clicou_novo = col_n.button(
+                "➕ Novo", key=f"btn_novo_{bloco}", use_container_width=True
+            )
         st.caption(
-            "Edição sempre grava em `dicionario_sku_aprendido.json`. "
-            "Editar um código oficial cria um override (prevalece sobre o YAML)."
+            "🔒 Códigos oficiais são preservados no YAML; editá-los cria um override."
+        )
+        if clicou_novo:
+            _dialog_novo(bloco)
+        return
+
+    event = st.dataframe(
+        df,
+        use_container_width=True,
+        hide_index=True,
+        selection_mode="single-row",
+        on_select="rerun",
+        key=f"df_{bloco}",
+    )
+
+    selected_rows = event.selection.rows if event and event.selection else []
+    cod_sel: str | None = None
+    if selected_rows:
+        cod_sel = str(df.iloc[selected_rows[0]]["Código"])
+
+    pode_editar = cod_sel is not None
+    pode_remover = cod_sel is not None and cod_sel in d_apr
+
+    with botoes_slot.container():
+        col_n, col_e, col_r, _spacer = st.columns([1.2, 1.8, 1.8, 5])
+        clicou_novo = col_n.button(
+            "➕ Novo", key=f"btn_novo_{bloco}", use_container_width=True
+        )
+        clicou_editar = col_e.button(
+            "✏️ Editar selecionado",
+            key=f"btn_edit_{bloco}",
+            disabled=not pode_editar,
+            use_container_width=True,
+        )
+        clicou_remover = col_r.button(
+            "🗑️ Remover selecionado",
+            key=f"btn_rem_{bloco}",
+            disabled=not pode_remover,
+            use_container_width=True,
         )
 
-        def _rotulo(cod: str) -> str:
-            desc_atual = d_apr.get(cod, d_ofi.get(cod, ""))
-            if cod in d_apr and cod in d_ofi:
-                origem = "aprendido (override)"
-            elif cod in d_apr:
-                origem = "aprendido"
-            else:
-                origem = "oficial"
-            return f"{cod} — {desc_atual}  ·  [{origem}]"
+    st.caption(
+        "🔒 Códigos oficiais são preservados no YAML; editá-los cria um override em "
+        "`dicionario_sku_aprendido.json`. Apenas aprendidos (ou overrides) podem ser removidos."
+    )
 
-        col_sel, col_save = st.columns([3, 1])
-        with col_sel:
-            escolha_edit = st.selectbox(
-                "Selecione um código para editar",
-                options=todos_codigos,
-                format_func=_rotulo,
-                key=f"edit_sel_{bloco}",
-            )
-        desc_vigente = d_apr.get(escolha_edit, d_ofi.get(escolha_edit, ""))
-
-        with st.form(key=f"form_edit_{bloco}", clear_on_submit=False):
-            nova_desc = st.text_input(
-                "Nova descrição",
-                value=desc_vigente,
-                key=f"edit_desc_{bloco}_{escolha_edit}",
-            )
-            submit_edit = st.form_submit_button("Salvar alteração", use_container_width=True)
-            if submit_edit:
-                nova_desc_n = nova_desc.strip()
-                if not nova_desc_n:
-                    st.error("Descrição não pode ser vazia.")
-                elif nova_desc_n == desc_vigente:
-                    st.info("Nenhuma alteração detectada.")
-                else:
-                    try:
-                        adicionar_codigo(bloco, escolha_edit, nova_desc_n)
-                        if escolha_edit in d_ofi and escolha_edit not in d_apr:
-                            st.success(
-                                f"Override criado para {escolha_edit} "
-                                "(oficial preservado no YAML)."
-                            )
-                        else:
-                            st.success(f"Descrição de {escolha_edit} atualizada.")
-                        st.rerun()
-                    except ValueError as e:
-                        st.error(str(e))
-
-    # ── 🗑️ Remover ──
-    removíveis = sorted(d_apr.keys())
-    if removíveis:
-        st.markdown("**🗑️ Remover código aprendido / override**")
-
-        def _rotulo_rem(cod: str) -> str:
-            if cod in d_ofi:
-                return (
-                    f"{cod} — {d_apr[cod]}  ·  [remover override → volta ao oficial]"
-                )
-            return f"{cod} — {d_apr[cod]}  ·  [aprendido]"
-
-        col_sel, col_btn = st.columns([3, 1])
-        with col_sel:
-            escolha_rem = st.selectbox(
-                "Selecione um código",
-                options=removíveis,
-                format_func=_rotulo_rem,
-                key=f"rem_sel_{bloco}",
-                label_visibility="collapsed",
-            )
-        with col_btn:
-            if st.button("Remover", key=f"rem_btn_{bloco}", use_container_width=True):
-                if remover_codigo(bloco, escolha_rem):
-                    if escolha_rem in d_ofi:
-                        st.success(
-                            f"Override de {escolha_rem} removido — descrição oficial restaurada."
-                        )
-                    else:
-                        st.success(f"Código {escolha_rem} removido.")
-                    st.rerun()
-                else:
-                    st.warning(f"Código {escolha_rem} não encontrado em aprendidos.")
-    elif d_ofi:
-        st.caption(
-            "🔒 Apenas códigos aprendidos (ou overrides de oficiais) podem ser removidos. "
-            "Os oficiais do YAML são preservados."
-        )
+    if clicou_novo:
+        _dialog_novo(bloco)
+    elif clicou_editar and cod_sel is not None:
+        _dialog_editar(bloco, cod_sel)
+    elif clicou_remover and cod_sel is not None:
+        _dialog_remover(bloco, cod_sel)
 
 
 def renderizar() -> None:
